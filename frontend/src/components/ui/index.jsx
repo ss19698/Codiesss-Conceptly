@@ -2,12 +2,10 @@ import React from 'react'
 import clsx from 'clsx'
 import { Loader2 } from 'lucide-react'
 
-// ── Skeleton ──────────────────────────────────────────────────
 export function Skeleton({ className }) {
   return <div className={clsx('skeleton animate-shimmer', className)} />
 }
 
-// ── Stat Card ─────────────────────────────────────────────────
 export function StatCard({ label, value, sub, color = '#7c6af7', icon: Icon, delay = 0 }) {
   return (
     <div
@@ -31,7 +29,6 @@ export function StatCard({ label, value, sub, color = '#7c6af7', icon: Icon, del
   )
 }
 
-// ── Score Ring ────────────────────────────────────────────────
 export function ScoreRing({ pct = 0, size = 80, color = '#7c6af7', label, sublabel }) {
   const r = size * 0.38
   const circ = 2 * Math.PI * r
@@ -56,7 +53,6 @@ export function ScoreRing({ pct = 0, size = 80, color = '#7c6af7', label, sublab
   )
 }
 
-// ── Empty State ───────────────────────────────────────────────
 export function EmptyState({ icon = '📭', title, desc, action }) {
   return (
     <div className="flex flex-col items-center justify-center py-16 text-center gap-3">
@@ -68,18 +64,15 @@ export function EmptyState({ icon = '📭', title, desc, action }) {
   )
 }
 
-// ── Badge Pill ────────────────────────────────────────────────
 export function LevelBadge({ level }) {
   const colors = { beginner: 'pill-green', intermediate: 'pill-purple', advanced: 'pill-pink' }
   return <span className={`pill ${colors[level] || 'pill-purple'}`}>{level}</span>
 }
 
-// ── Loading Spinner ───────────────────────────────────────────
 export function Spinner({ size = 16, className }) {
   return <Loader2 size={size} className={clsx('animate-spin text-accent', className)} />
 }
 
-// ── Section Header ────────────────────────────────────────────
 export function SectionHeader({ label, title, action }) {
   return (
     <div className="flex items-end justify-between mb-6">
@@ -92,7 +85,6 @@ export function SectionHeader({ label, title, action }) {
   )
 }
 
-// ── Progress Bar ──────────────────────────────────────────────
 export function ProgressBar({ pct = 0, color = 'bg-accent', className }) {
   return (
     <div className={clsx('prog-track', className)}>
@@ -101,7 +93,6 @@ export function ProgressBar({ pct = 0, color = 'bg-accent', className }) {
   )
 }
 
-// ── Modal ─────────────────────────────────────────────────────
 export function Modal({ open, onClose, children }) {
   if (!open) return null
   return (

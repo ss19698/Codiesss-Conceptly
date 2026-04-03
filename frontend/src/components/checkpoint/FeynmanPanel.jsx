@@ -1,4 +1,3 @@
-// src/components/checkpoint/FeynmanPanel.jsx
 import React, { useEffect, useState } from 'react'
 import { api } from '../../services/api'
 import { Spinner } from '../ui'
@@ -42,8 +41,7 @@ export default function FeynmanPanel({ checkpoint, onRetakeQuiz }) {
   }
 
   return (
-    <div className="space-y-4">
-      {/* Header card */}
+    <div className="space-y-4">\
       <div className="card p-5">
         <div className="flex items-center gap-3 mb-4">
           <div className="w-10 h-10 rounded-xl bg-accent/10 flex items-center justify-center">
@@ -71,7 +69,6 @@ export default function FeynmanPanel({ checkpoint, onRetakeQuiz }) {
         )}
       </div>
 
-      {/* Explanation */}
       <div className="card p-5">
         <div className="flex items-center gap-2 mb-4">
           <div className="w-2 h-2 rounded-full bg-accent animate-pulse" />
@@ -90,7 +87,6 @@ export default function FeynmanPanel({ checkpoint, onRetakeQuiz }) {
         )}
       </div>
 
-      {/* Actions */}
       <div className="flex gap-3">
         <button
           onClick={handleNewApproach}

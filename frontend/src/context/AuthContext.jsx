@@ -1,4 +1,3 @@
-// src/context/AuthContext.jsx
 import React, { createContext, useContext, useEffect, useState } from 'react'
 import { auth, onAuthStateChanged, logOut } from '../services/firebase'
 import { api } from '../services/api'
@@ -7,7 +6,7 @@ const AuthContext = createContext(null)
 
 export function AuthProvider({ children }) {
   const [firebaseUser, setFirebaseUser] = useState(null)
-  const [dbUser, setDbUser] = useState(null)   // Your backend user record
+  const [dbUser, setDbUser] = useState(null)   
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
@@ -18,7 +17,6 @@ export function AuthProvider({ children }) {
           const profile = await api.me()
           setDbUser(profile)
         } catch {
-          // User exists in Firebase but not in DB yet (first Google login)
           setDbUser(null)
         }
       } else {

@@ -1,14 +1,3 @@
-// src/services/firebase.js
-// ─────────────────────────────────────────────────────────────
-// HOW TO CONNECT:
-//  1. Go to https://console.firebase.google.com
-//  2. Create project → Add App → Web app
-//  3. Copy the firebaseConfig object values into your .env file
-//     (see .env.example)
-//  4. In Firebase Console → Authentication → Sign-in method:
-//     Enable "Email/Password" and "Google"
-// ─────────────────────────────────────────────────────────────
-
 import { initializeApp } from 'firebase/app'
 import {
   getAuth,

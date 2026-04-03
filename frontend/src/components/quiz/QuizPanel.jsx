@@ -1,4 +1,3 @@
-// src/components/quiz/QuizPanel.jsx
 import React, { useEffect, useState } from 'react'
 import { api } from '../../services/api'
 import { Spinner, ScoreRing } from '../ui'

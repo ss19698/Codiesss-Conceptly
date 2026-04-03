@@ -3,7 +3,6 @@ import clsx from 'clsx'
 import { CheckCircle2, Lock, Zap } from 'lucide-react'
 import { LevelBadge } from '../ui'
 
-// ── Keyframe styles injected once ────────────────────────────
 const STYLES = `
 @keyframes cp-pulse-ring {
   0%,100% { box-shadow: 0 0 0 0 rgba(127,119,221,0.45); }
@@ -31,7 +30,6 @@ function injectStyles() {
   document.head.appendChild(tag)
 }
 
-// ── XP pop overlay ────────────────────────────────────────────
 function XPPop({ xp }) {
   return (
     <span style={{
@@ -45,7 +43,6 @@ function XPPop({ xp }) {
   )
 }
 
-// ── Connector SVG between nodes ───────────────────────────────
 function Connector({ fromRight, unlocked }) {
   const stroke = unlocked ? '#7F77DD' : 'var(--color-border-secondary)'
   const dash   = unlocked ? 'none' : '6 5'
@@ -81,7 +78,6 @@ function Connector({ fromRight, unlocked }) {
   )
 }
 
-// ── Single checkpoint card ────────────────────────────────────
 function CheckpointCard({ cp, index, state, animDelay, onSelect, showXP }) {
   // state: 'done' | 'active' | 'upcoming' | 'locked'
   const circleStyles = {
@@ -122,7 +118,6 @@ function CheckpointCard({ cp, index, state, animDelay, onSelect, showXP }) {
     >
       {showXP && <XPPop xp={cp.xp_earned || 50} />}
 
-      {/* Circle */}
       <div style={{
         width: 38, height: 38, borderRadius: '50%',
         display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -134,7 +129,6 @@ function CheckpointCard({ cp, index, state, animDelay, onSelect, showXP }) {
         {(state === 'active' || state === 'upcoming') && (index + 1)}
       </div>
 
-      {/* Info */}
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{
           fontSize: 13, fontWeight: 500, lineHeight: 1.3,
@@ -170,7 +164,6 @@ function CheckpointCard({ cp, index, state, animDelay, onSelect, showXP }) {
   )
 }
 
-// ── Progress bar ──────────────────────────────────────────────
 function ProgressBar({ checkpoints }) {
   const done  = checkpoints.filter(c => c.status === 'completed').length
   const total = checkpoints.length
@@ -205,16 +198,7 @@ function ProgressBar({ checkpoints }) {
   )
 }
 
-// ── Main exported component ───────────────────────────────────
-/**
- * GamePathStepper — drop-in replacement for CheckpointStepper
- *
- * Props:
- *   checkpoints  — array of checkpoint objects (same shape as before)
- *   activeIdx    — index of currently active checkpoint
- *   onSelect(i)  — called when user clicks a checkpoint
- *   newlyDone    — optional index that was JUST completed (triggers XP pop)
- */
+
 export default function GamePathStepper({ checkpoints, activeIdx, onSelect, newlyDone }) {
   useEffect(() => { injectStyles() }, [])
   const [xpPopIdx, setXpPopIdx] = useState(null)
@@ -231,7 +215,6 @@ export default function GamePathStepper({ checkpoints, activeIdx, onSelect, newl
 
   if (!checkpoints.length) return null
 
-  // Alternate left / right placement (Duolingo-style zigzag)
   const isRight = (i) => i % 2 !== 0
 
   function getState(cp, i) {
@@ -252,7 +235,6 @@ export default function GamePathStepper({ checkpoints, activeIdx, onSelect, newl
 
           return (
             <React.Fragment key={cp.id}>
-              {/* Node row */}
               <div style={{
                 width: '100%',
                 display: 'flex',
@@ -268,7 +250,6 @@ export default function GamePathStepper({ checkpoints, activeIdx, onSelect, newl
                 />
               </div>
 
-              {/* Connector to next node */}
               {i < checkpoints.length - 1 && (
                 <Connector
                   fromRight={right}
