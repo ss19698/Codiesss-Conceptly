@@ -5,7 +5,7 @@ from datetime import datetime, timedelta
 from app.database import get_db
 from app.models import User, UserBadge, WeakTopic, DailyChallenge, UserNote, LearningSession, Checkpoint, UserAnalytics
 from app.schemas import BadgeResponse, WeakTopicResponse, DailyChallengeResponse, TutorModeUpdate, NoteCreate, NoteResponse, UserResponse
-from app.auth import get_current_user
+from app.dependencies import get_current_user
 from app.services import notes_generator
 import random
 

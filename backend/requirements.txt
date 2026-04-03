@@ -86,3 +86,4 @@ typing_extensions
 urllib3
 uvicorn
 yarl
+firebase-admin

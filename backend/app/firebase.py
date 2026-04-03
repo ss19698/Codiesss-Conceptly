@@ -3,7 +3,8 @@ from firebase_admin import credentials, auth
 
 cred = credentials.Certificate("app/credentials/firebase_service_account.json")
 
-firebase_admin.initialize_app(cred)
+if not firebase_admin._apps:
+    firebase_admin.initialize_app(cred)
 
 def verify_firebase_token(id_token: str):
     try:

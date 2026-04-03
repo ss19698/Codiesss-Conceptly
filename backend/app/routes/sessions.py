@@ -5,7 +5,7 @@ from datetime import datetime
 from app.database import get_db
 from app.models import User, LearningSession, Checkpoint, UserAnalytics, UserNote
 from app.schemas import SessionCreate, SessionResponse, CheckpointResponse
-from app.auth import get_current_user
+from app.dependencies import get_current_user
 from app.services import checkpoint_generator, notes_generator, question_generator
 from app.services.workflow import run_checkpoint_workflow
 

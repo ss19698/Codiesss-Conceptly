@@ -3,7 +3,6 @@ from langchain_groq import ChatGroq
 from langchain_core.messages import HumanMessage, SystemMessage
 from app.llm import get_llm
 
-load_dotenv()
 llm = get_llm(temperature=0)
 
 def explain_checkpoint(

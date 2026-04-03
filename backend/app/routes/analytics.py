@@ -4,7 +4,7 @@ from typing import List
 from app.database import get_db
 from app.models import User, LearningSession, Checkpoint, QuizAttempt, UserAnalytics
 from app.schemas import AnalyticsResponse, SessionResponse, CheckpointResponse
-from app.auth import get_current_user
+from app.dependencies import get_current_user
 
 router = APIRouter(prefix="/analytics", tags=["analytics"])
 

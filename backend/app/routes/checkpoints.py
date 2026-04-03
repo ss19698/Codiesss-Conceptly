@@ -4,7 +4,7 @@ from datetime import datetime
 from app.database import get_db
 from app.models import User, Checkpoint, QuizAttempt, WeakTopic, UserAnalytics
 from app.schemas import QuizAnswer
-from app.auth import get_current_user
+from app.dependencies import get_current_user
 from app.services import evaluator, feynman
 
 router = APIRouter(prefix="/checkpoints", tags=["checkpoints"])
