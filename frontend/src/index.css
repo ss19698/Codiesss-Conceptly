@@ -1,0 +1,135 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  * { box-sizing: border-box; }
+
+  body {
+    background-color: #09090f;
+    color: #e8e8f0;
+    font-family: 'DM Sans', sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  h1, h2, h3, h4, h5 {
+    font-family: 'Sora', sans-serif;
+  }
+
+  ::-webkit-scrollbar { width: 4px; height: 4px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: #252535; border-radius: 4px; }
+  ::-webkit-scrollbar-thumb:hover { background: #353550; }
+}
+
+@layer components {
+  /* ── Noise texture overlay ── */
+  .noise::after {
+    content: '';
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 9999;
+    opacity: 0.025;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E");
+  }
+
+  /* ── Glow blobs ── */
+  .blob {
+    position: fixed;
+    border-radius: 50%;
+    filter: blur(80px);
+    pointer-events: none;
+  }
+
+  /* ── Card ── */
+  .card {
+    @apply bg-card border border-border rounded-2xl transition-all duration-200;
+  }
+  .card-hover {
+    @apply hover:border-accent/40 hover:-translate-y-0.5;
+  }
+
+  /* ── Pills ── */
+  .pill {
+    @apply inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-medium;
+  }
+  .pill-purple { @apply bg-accent/15 text-purple-300 border border-accent/25; }
+  .pill-green  { @apply bg-accent3/15 text-emerald-300 border border-accent3/25; }
+  .pill-pink   { @apply bg-accent2/15 text-pink-300 border border-accent2/25; }
+  .pill-amber  { @apply bg-amber-500/15 text-amber-300 border border-amber-500/25; }
+  .pill-red    { @apply bg-red-500/15 text-red-300 border border-red-500/25; }
+
+  /* ── Buttons ── */
+  .btn-primary {
+    @apply font-display font-semibold px-5 py-2.5 rounded-xl text-sm
+           bg-gradient-to-r from-accent to-purple-400 text-white
+           hover:opacity-90 hover:-translate-y-px active:translate-y-0
+           transition-all duration-150 disabled:opacity-40 disabled:cursor-not-allowed;
+  }
+  .btn-ghost {
+    @apply px-4 py-2 rounded-xl text-sm border border-border text-muted
+           hover:border-accent/50 hover:text-text transition-all duration-150;
+  }
+  .btn-danger {
+    @apply px-4 py-2 rounded-xl text-sm border border-red-500/30 text-red-400
+           hover:bg-red-500/10 transition-all duration-150;
+  }
+
+  /* ── Progress bar ── */
+  .prog-track { @apply h-1.5 rounded-full bg-border overflow-hidden; }
+  .prog-fill  { @apply h-full rounded-full transition-all duration-700 ease-out; }
+
+  /* ── Nav item ── */
+  .nav-item {
+    @apply flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm text-muted
+           cursor-pointer transition-all duration-150 select-none;
+  }
+  .nav-item:hover { @apply bg-accent/10 text-text; }
+  .nav-item.active { @apply bg-accent/15 text-purple-300; }
+
+  /* ── Input ── */
+  .input {
+    @apply w-full bg-surface border border-border rounded-xl px-4 py-3 text-sm text-text
+           placeholder-muted outline-none focus:border-accent/60 focus:ring-1 focus:ring-accent/20
+           transition-all duration-150 font-body;
+  }
+
+  /* ── Quiz option ── */
+  .quiz-opt {
+    @apply border border-border rounded-xl px-4 py-3 cursor-pointer text-sm
+           hover:border-accent/50 hover:bg-accent/10 transition-all duration-150 select-none;
+  }
+  .quiz-opt.selected { @apply border-accent bg-accent/10 text-text; }
+  .quiz-opt.correct  { @apply border-accent3 bg-accent3/10 text-emerald-200; }
+  .quiz-opt.wrong    { @apply border-accent2 bg-accent2/10 text-pink-200; }
+  .quiz-opt.disabled { @apply cursor-default; }
+
+  /* ── Shimmer skeleton ── */
+  .skeleton {
+    @apply rounded-lg bg-gradient-to-r from-border via-surface to-border;
+    background-size: 200% 100%;
+    animation: shimmer 1.6s linear infinite;
+  }
+
+  /* ── Checkpoint connector ── */
+  .cp-connector { @apply w-0.5 flex-1 min-h-[28px] bg-border; }
+  .cp-connector.done { @apply bg-accent3/60; }
+
+  /* ── Score ring ── */
+  .score-ring { @apply relative inline-flex items-center justify-center; }
+  .score-ring svg { transform: rotate(-90deg); }
+  .score-label { @apply absolute font-display font-bold; }
+}
+
+@layer utilities {
+  .text-gradient {
+    @apply bg-clip-text text-transparent bg-gradient-to-r from-accent via-purple-400 to-accent2;
+  }
+  .border-gradient {
+    border-image: linear-gradient(135deg, #7c6af7, #f772c0) 1;
+  }
+  .glow-accent { text-shadow: 0 0 24px rgba(124,106,247,0.6); }
+  .glow-green  { text-shadow: 0 0 24px rgba(78,240,184,0.5); }
+}
