@@ -11,7 +11,7 @@ app = FastAPI(title="Conceptly API", version="1.0.0")
 
 _raw_origins = os.getenv(
     "FRONTEND_URL",
-    "http://localhost:5173", "http://localhost:3000"
+    "http://localhost:5173"
 )
 ALLOWED_ORIGINS = [o.strip() for o in _raw_origins.split(",") if o.strip()]
 
