@@ -13,6 +13,7 @@ def get_current_user(credentials=Depends(security)):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid or expired Firebase token",
+            headers={"WWW-Authenticate": "Bearer"},
         )
 
-    return decoded_token["uid"]
+    return decoded_token

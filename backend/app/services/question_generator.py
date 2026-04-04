@@ -6,6 +6,7 @@ from fractions import Fraction
 from langchain_groq import ChatGroq
 from langchain_core.messages import HumanMessage, SystemMessage
 from app.llm import get_llm
+import os
 
 llm = get_llm(temperature=0.4)
 llm_strict = get_llm(temperature=0.1)

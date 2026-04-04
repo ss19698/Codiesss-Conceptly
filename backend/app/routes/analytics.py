@@ -11,10 +11,10 @@ router = APIRouter(prefix="/analytics", tags=["analytics"])
 @router.get("/", response_model=AnalyticsResponse)
 def get_analytics(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     
-    analytics = db.query(UserAnalytics).filter(UserAnalytics.user_id == current_user.id).first()
+    analytics = db.query(UserAnalytics).filter(UserAnalytics.user_id == current_user["id"]).first()
     
     if not analytics:
-        analytics = UserAnalytics(user_id=current_user.id)
+        analytics = UserAnalytics(user_id=current_user["id"])
         db.add(analytics)
         db.commit()
         db.refresh(analytics)
@@ -25,7 +25,7 @@ def get_analytics(current_user: User = Depends(get_current_user), db: Session = 
 def get_history(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     
     sessions = db.query(LearningSession).filter(
-        LearningSession.user_id == current_user.id
+        LearningSession.user_id == current_user["id"]
     ).order_by(LearningSession.created_at.desc()).all()
     
     return sessions
@@ -35,7 +35,7 @@ def get_session_details(session_id: int, current_user: User = Depends(get_curren
     
     session = db.query(LearningSession).filter(
         LearningSession.id == session_id,
-        LearningSession.user_id == current_user.id
+        LearningSession.user_id == current_user["id"]
     ).first()
     
     if not session:
@@ -60,23 +60,23 @@ def get_session_details(session_id: int, current_user: User = Depends(get_curren
 @router.get("/progress")
 def get_progress_stats(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     
-    total_sessions = db.query(LearningSession).filter(LearningSession.user_id == current_user.id).count()
+    total_sessions = db.query(LearningSession).filter(LearningSession.user_id == current_user["id"]).count()
     completed_sessions = db.query(LearningSession).filter(
-        LearningSession.user_id == current_user.id,
+        LearningSession.user_id == current_user["id"],
         LearningSession.status == "completed"
     ).count()
     
     total_checkpoints = db.query(Checkpoint).join(LearningSession).filter(
-        LearningSession.user_id == current_user.id
+        LearningSession.user_id == current_user["id"]
     ).count()
     
     completed_checkpoints = db.query(Checkpoint).join(LearningSession).filter(
-        LearningSession.user_id == current_user.id,
+        LearningSession.user_id == current_user["id"],
         Checkpoint.status == "completed"
     ).count()
     
     all_attempts = db.query(QuizAttempt).join(Checkpoint).join(LearningSession).filter(
-        LearningSession.user_id == current_user.id
+        LearningSession.user_id == current_user["id"]
     ).all()
     
     avg_score = sum([a.score for a in all_attempts]) / len(all_attempts) if all_attempts else 0

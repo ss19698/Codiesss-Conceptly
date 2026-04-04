@@ -30,7 +30,7 @@ def create_session(
     db: Session = Depends(get_db),
 ):
     new_session = LearningSession(
-        user_id=current_user.id,
+        user_id=current_user["id"],
         topic=session.topic,
         user_notes=session.user_notes,
         status="in_progress",
@@ -40,7 +40,7 @@ def create_session(
     db.refresh(new_session)
 
     analytics = db.query(UserAnalytics).filter(
-        UserAnalytics.user_id == current_user.id
+        UserAnalytics.user_id == current_user["id"]
     ).first()
     if analytics:
         analytics.total_sessions += 1
@@ -87,7 +87,7 @@ def generate_checkpoints_route(
 ):
     session = db.query(LearningSession).filter(
         LearningSession.id == session_id,
-        LearningSession.user_id == current_user.id,
+        LearningSession.user_id == current_user["id"],
     ).first()
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
@@ -160,7 +160,7 @@ def get_checkpoints(
 ):
     session = db.query(LearningSession).filter(
         LearningSession.id == session_id,
-        LearningSession.user_id == current_user.id,
+        LearningSession.user_id == current_user["id"],
     ).first()
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
@@ -363,7 +363,7 @@ def complete_checkpoint(
         print(f"🎉 User leveled up to level {current_user.level}!")
 
     analytics = db.query(UserAnalytics).filter(
-        UserAnalytics.user_id == current_user.id
+        UserAnalytics.user_id == current_user["id"]
     ).first()
     if analytics:
         analytics.total_checkpoints += 1
@@ -381,7 +381,7 @@ def complete_session(
 ):
     session = db.query(LearningSession).filter(
         LearningSession.id == session_id,
-        LearningSession.user_id == current_user.id,
+        LearningSession.user_id == current_user["id"],
     ).first()
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
@@ -416,7 +416,7 @@ def complete_session(
         print(f"🎉 User leveled up to level {current_user.level}!")
 
     analytics = db.query(UserAnalytics).filter(
-        UserAnalytics.user_id == current_user.id
+        UserAnalytics.user_id == current_user["id"]
     ).first()
     if analytics:
         analytics.completed_sessions += 1
@@ -450,7 +450,7 @@ def can_complete_session(
 ):
     session = db.query(LearningSession).filter(
         LearningSession.id == session_id,
-        LearningSession.user_id == current_user.id,
+        LearningSession.user_id == current_user["id"],
     ).first()
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
@@ -477,7 +477,7 @@ def generate_session_notes(
 ):
     session = db.query(LearningSession).filter(
         LearningSession.id == session_id,
-        LearningSession.user_id == current_user.id,
+        LearningSession.user_id == current_user["id"],
     ).first()
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
@@ -498,7 +498,7 @@ def generate_session_notes(
 
     from app.models import WeakTopic
     weak_topics = db.query(WeakTopic).filter(
-        WeakTopic.user_id == current_user.id
+        WeakTopic.user_id == current_user["id"]
     ).order_by(WeakTopic.strength_score.asc()).limit(5).all()
     weak_areas = [wt.concept for wt in weak_topics]
 
@@ -516,7 +516,7 @@ def generate_session_notes(
         )
 
     note = UserNote(
-        user_id=current_user.id,
+        user_id=current_user["id"],
         session_id=session.id,
         content=notes_content,
     )
@@ -537,7 +537,7 @@ async def upload_session_notes(
 ):
     session = db.query(LearningSession).filter(
         LearningSession.id == session_id,
-        LearningSession.user_id == current_user.id,
+        LearningSession.user_id == current_user["id"],
     ).first()
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
@@ -597,7 +597,7 @@ async def upload_session_notes(
         session.user_notes = extracted_text
     db.commit()
     note_record = UserNote(
-        user_id=current_user.id,
+        user_id=current_user["id"],
         session_id=session.id,
         content=extracted_text[:10000],  
     )
@@ -651,7 +651,7 @@ def update_checkpoint(
     """
     session = db.query(LearningSession).filter(
         LearningSession.id == session_id,
-        LearningSession.user_id == current_user.id,
+        LearningSession.user_id == current_user["id"],
     ).first()
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
@@ -695,7 +695,7 @@ def update_checkpoint(
     db.commit()
     db.refresh(checkpoint)
 
-    print(f"✅ Checkpoint {checkpoint_id} updated by user {current_user.id}")
+    print(f"✅ Checkpoint {checkpoint_id} updated by user {current_user["id"]}")
 
     return {
         "message": "Checkpoint updated successfully.",

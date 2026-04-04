@@ -55,7 +55,7 @@ def submit_quiz(checkpoint_id: int, quiz_answer: QuizAnswer, current_user: User 
     else:
         for weak_area in result.get('weak_areas', []):
             existing_weak = db.query(WeakTopic).filter(
-                WeakTopic.user_id == current_user.id,
+                WeakTopic.user_id == current_user["id"],
                 WeakTopic.topic == checkpoint.topic,
                 WeakTopic.concept == weak_area[:100]
             ).first()
@@ -65,14 +65,14 @@ def submit_quiz(checkpoint_id: int, quiz_answer: QuizAnswer, current_user: User 
                 existing_weak.last_practiced = datetime.utcnow()
             else:
                 weak_topic = WeakTopic(
-                    user_id=current_user.id,
+                    user_id=current_user["id"],
                     topic=checkpoint.topic,
                     concept=weak_area[:100],
                     strength_score=0.5
                 )
                 db.add(weak_topic)
     
-    analytics = db.query(UserAnalytics).filter(UserAnalytics.user_id == current_user.id).first()
+    analytics = db.query(UserAnalytics).filter(UserAnalytics.user_id == current_user["id"]).first()
     if analytics:
         total = analytics.total_checkpoints if analytics.total_checkpoints > 0 else 0
         avg = analytics.avg_score
@@ -85,7 +85,7 @@ def submit_quiz(checkpoint_id: int, quiz_answer: QuizAnswer, current_user: User 
     
     from app.models import UserAnalytics as UA
     from datetime import timedelta
-    _analytics = db.query(UA).filter(UA.user_id == current_user.id).first()
+    _analytics = db.query(UA).filter(UA.user_id == current_user["id"]).first()
     if _analytics:
         _today = datetime.utcnow().date()
         _last = _analytics.last_study_date.date() if _analytics.last_study_date else None
@@ -114,7 +114,7 @@ def get_feynman_explanation(checkpoint_id: int, attempt: int = 0, current_user: 
         raise HTTPException(status_code=404, detail="Checkpoint not found")
     
     weak_topics = db.query(WeakTopic).filter(
-        WeakTopic.user_id == current_user.id,
+        WeakTopic.user_id == current_user["id"],
         WeakTopic.topic == checkpoint.topic
     ).order_by(WeakTopic.strength_score.asc()).limit(3).all()
     
