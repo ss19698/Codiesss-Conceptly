@@ -53,31 +53,32 @@ def create_session(
 
 @router.get("/", response_model=List[SessionResponse])
 def get_sessions(
-    current_user: User = Depends(get_current_user),
+    current_user = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     sessions = db.query(LearningSession).filter(
-        LearningSession.user_id == current_user.id
+        LearningSession.user_id == current_user["uid"]
     ).order_by(LearningSession.created_at.desc()).all()
-    return sessions
 
+    return sessions
 @router.get("/{session_id}", response_model=SessionResponse)
 def get_session(
     session_id: int,
-    current_user: User = Depends(get_current_user),
+    current_user = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     session = db.query(LearningSession).filter(
         LearningSession.id == session_id,
-        LearningSession.user_id == current_user.id,
+        LearningSession.user_id == current_user["uid"],
     ).first()
+
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
 
     _init_rag_for_session(session)
 
     return session
-
+    
 @router.post("/{session_id}/checkpoints")
 def generate_checkpoints_route(
     session_id: int,
