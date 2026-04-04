@@ -33,16 +33,14 @@ app.include_router(gamification.router)
 @app.on_event("startup")
 async def on_startup():
     print("Starting Conceptly API")
-    print(f"Running on Render : {bool(os.getenv('RENDER'))}")
-    print(f"DB configured     : {bool(os.getenv('DATABASE_URL'))}")
-    print(f"Allowed origins   : {ALLOWED_ORIGINS}")
     try:
+        from app.models import Base
+        Base.metadata.drop_all(bind=engine)   # ← ADD THIS
         init_db()
-        print("Database initialised")
+        print("Database initialized")
     except Exception as e:
-        print(f"Database init failed: {e}")
+        print(f"Database initialization failed: {e}")
     print("Startup complete!")
-
 
 @app.get("/")
 def read_root():

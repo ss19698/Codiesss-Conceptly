@@ -10,7 +10,7 @@ class User(Base):
     __tablename__ = "users"
 
     id = Column(Integer, primary_key=True, index=True)
-    firebase_uid = Column(String, unique=True, index=True, nullable=False)   # ← added
+    firebase_uid = Column(String, unique=True, index=True, nullable=False)  
     email = Column(String, unique=True, index=True, nullable=False)
     name = Column(String, nullable=False)
     tutor_mode = Column(String, default="supportive_buddy")
