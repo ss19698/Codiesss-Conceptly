@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react'
 import { api } from '../../services/api'
-import { Spinner } from '../ui'
+import { Spinner } from '../ui/index'
 import toast from 'react-hot-toast'
 import { BrainCircuit, RefreshCw, ChevronRight, AlertTriangle } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
@@ -41,7 +41,7 @@ export default function FeynmanPanel({ checkpoint, onRetakeQuiz }) {
   }
 
   return (
-    <div className="space-y-4">\
+    <div className="space-y-4">
       <div className="card p-5">
         <div className="flex items-center gap-3 mb-4">
           <div className="w-10 h-10 rounded-xl bg-accent/10 flex items-center justify-center">

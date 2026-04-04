@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { api } from '../services/api'
-import { StatCard, Skeleton, EmptyState, ScoreRing, SectionHeader } from '../components/ui'
+import { StatCard, Skeleton, EmptyState, ScoreRing, SectionHeader } from '../components/ui/index'
 import { BookOpen, BarChart2, Zap, Flame, Plus, ArrowRight, Target, Clock } from 'lucide-react'
 import toast from 'react-hot-toast'
 
@@ -47,7 +47,7 @@ function WeakTopicRow({ topic }) {
   return (
     <div className="space-y-1.5">
       <div className="flex justify-between text-xs">
-        <span className="text-text truncate flex-1">{topic.concept}</span>
+        <span className="text-[#A78BFA] truncate flex-1">{topic.concept}</span>
         <span className="font-mono ml-2 flex-shrink-0" style={{ color }}>{pct}%</span>
       </div>
       <div className="prog-track">
@@ -91,7 +91,7 @@ export default function DashboardPage() {
     try {
       const session = await api.createSession(newTopic.trim())
       toast.success('Session created!')
-      navigate(`/learn/${session.id}`)
+      navigate(`/session/${session.id}`)
     } catch (err) {
       toast.error(err.message)
       setCreating(false)
@@ -106,7 +106,7 @@ export default function DashboardPage() {
     { label: 'Total Sessions', value: analytics?.total_sessions ?? '—', sub: 'all time', color: '#7c6af7', icon: BookOpen, delay: 0 },
     { label: 'Completed', value: analytics?.completed_sessions ?? '—', sub: 'sessions done', color: '#4ef0b8', icon: BarChart2, delay: 60 },
     { label: 'Avg Score', value: analytics?.avg_score ? `${Math.round(analytics.avg_score * 100)}%` : '—', sub: 'quiz accuracy', color: '#f772c0', icon: Target, delay: 120 },
-    { label: 'Streak', value: `${analytics?.current_streak ?? 0}d`, sub: 'current streak', color: '#f0c44e', icon: Flame, delay: 180 },
+    { label: 'Streak', value: `${analytics?.current_streak ?? 0} d`, sub: 'current streak', color: '#f0c44e', icon: Flame, delay: 180 },
   ]
 
   return (
@@ -137,7 +137,7 @@ export default function DashboardPage() {
         <div className="flex flex-wrap gap-2 mt-3">
           {['Neural Networks', 'Decision Trees', 'Gradient Descent', 'BERT & Transformers', 'K-Means Clustering', 'PCA'].map(t => (
             <button key={t} type="button" onClick={() => setNewTopic(t)}
-              className="text-[11px] px-2.5 py-1 rounded-lg border border-border text-muted hover:border-accent/40 hover:text-text transition-all">
+              className="text-[11px] px-2.5 py-1 rounded-lg border border-border text-muted hover:border-accent/40 hover:text-[#A78BFA] transition-all">
               {t}
             </button>
           ))}
@@ -199,12 +199,12 @@ export default function DashboardPage() {
         <SectionHeader
           label="Recent Activity"
           title="Sessions"
-          action={<button className="btn-ghost text-xs" onClick={() => navigate('/learn')}>View all</button>}
+          action={<button className="btn-ghost text-xs" onClick={() => navigate('/learn/sessions')}>View all</button>}
         />
         {loading
           ? <div className="space-y-3">{Array(3).fill(0).map((_, i) => <Skeleton key={i} className="h-16" />)}</div>
           : sessions.length > 0
-            ? <div className="space-y-3">{sessions.map((s, i) => <SessionCard key={s.id} session={s} delay={i * 50} onClick={() => navigate(`/learn/${s.id}`)} />)}</div>
+            ? <div className="space-y-3">{sessions.map((s, i) => <SessionCard key={s.id} session={s} delay={i * 50} onClick={() => navigate(`/session/${s.id}`)} />)}</div>
             : <EmptyState icon="📚" title="No sessions yet" desc="Create your first learning session above!" />}
       </div>
     </div>

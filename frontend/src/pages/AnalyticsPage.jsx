@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react'
 import { api } from '../services/api'
-import { ScoreRing, Skeleton, SectionHeader, StatCard } from '../components/ui'
+import { ScoreRing, Skeleton, SectionHeader, StatCard } from '../components/ui/index'
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
   LineChart, Line, CartesianGrid, Area, AreaChart
@@ -55,7 +55,7 @@ function StreakWidget({ analytics }) {
       <div className="flex items-end gap-3 mb-4">
         <div className="font-display font-bold text-5xl text-amber-400 leading-none">{streak}</div>
         <div className="pb-1">
-          <div className="text-sm font-body text-text">days</div>
+          <div className="text-sm font-body text-[#A78BFA]">days</div>
           <div className="text-[11px] text-muted">Best: {longest}d</div>
         </div>
       </div>

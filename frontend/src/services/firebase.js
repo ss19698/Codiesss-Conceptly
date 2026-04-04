@@ -7,7 +7,7 @@ import {
   createUserWithEmailAndPassword,
   signOut,
   updateProfile,
-  onAuthStateChanged,
+  onAuthStateChanged as firebaseOnAuthStateChanged
 } from 'firebase/auth'
 
 const firebaseConfig = {
@@ -38,4 +38,5 @@ export const registerEmail = async (email, password, displayName) => {
 
 export const logOut = () => signOut(auth)
 
-export { onAuthStateChanged }
+export const onAuthStateChanged = (callback) =>
+  firebaseOnAuthStateChanged(auth, callback)

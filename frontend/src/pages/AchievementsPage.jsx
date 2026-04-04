@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react'
 import { useAuth } from '../context/AuthContext'
 import { api } from '../services/api'
-import { Skeleton, SectionHeader, ProgressBar } from '../components/ui'
+import { Skeleton, SectionHeader, ProgressBar } from '../components/ui/index'
 import { Zap, Trophy, Target, Star, Crown, Flame } from 'lucide-react'
 import toast from 'react-hot-toast'
 import clsx from 'clsx'
@@ -83,7 +83,7 @@ function WeakTopicList({ topics }) {
             return (
               <div key={t.concept}>
                 <div className="flex justify-between text-xs mb-1.5 font-body">
-                  <span className="font-medium text-text">{t.concept}</span>
+                  <span className="font-medium text-[#A78BFA]">{t.concept}</span>
                   <span className="font-mono" style={{ color }}>{pct}%</span>
                 </div>
                 <ProgressBar pct={pct} className="h-1.5" color="" />
@@ -110,10 +110,10 @@ function LeaderboardCard({ leaderboard, dbUser }) {
         <span className="pill pill-amber ml-auto">This week</span>
       </div>
       {leaderboard.map((u, i) => {
-        const isMe = u.user_id === dbUser?.id
+        const isMe = u.is_me
         const medal = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `${i + 1}`
         return (
-          <div key={u.user_id} className={clsx(
+          <div key={u.rank} className={clsx(
             'flex items-center gap-3 px-3 py-2.5 rounded-xl mb-1 transition-all',
             isMe ? 'bg-accent/10 border border-accent/25' : 'hover:bg-surface'
           )}>
@@ -178,7 +178,7 @@ export default function AchievementsPage() {
               <span className="pill pill-amber">+{challenge.bonus_xp} XP</span>
               {challenge.completed && <span className="pill pill-green">✓ Done</span>}
             </div>
-            <p className="text-sm text-text font-body">{challenge.task}</p>
+            <p className="text-sm text-[#A78BFA] font-body">{challenge.task}</p>
           </div>
         </div>
       )}

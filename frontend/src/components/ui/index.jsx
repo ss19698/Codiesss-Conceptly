@@ -15,7 +15,7 @@ export function StatCard({ label, value, sub, color = '#7c6af7', icon: Icon, del
       <div className="flex items-start justify-between">
         <div>
           <div className="text-2xl font-display font-bold" style={{ color }}>{value}</div>
-          <div className="text-sm font-medium text-text mt-0.5">{label}</div>
+          <div className="text-sm font-medium text-[#A78BFA] mt-0.5">{label}</div>
           {sub && <div className="text-[11px] text-muted mt-0.5">{sub}</div>}
         </div>
         {Icon && (
@@ -100,5 +100,13 @@ export function Modal({ open, onClose, children }) {
       <div className="absolute inset-0 bg-bg/80 backdrop-blur-sm" onClick={onClose} />
       <div className="relative z-10 animate-fade-up">{children}</div>
     </div>
+  )
+}
+export function XPBadge({ xp }) {
+  return (
+    <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold font-body"
+      style={{ background:'rgba(245,200,66,0.15)', color:'var(--amber)', border:'1px solid rgba(245,200,66,0.3)' }}>
+      ⚡ {xp} XP
+    </span>
   )
 }

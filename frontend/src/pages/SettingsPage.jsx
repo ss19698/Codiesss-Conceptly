@@ -1,7 +1,7 @@
 import React, { useState } from 'react'
 import { useAuth } from '../context/AuthContext'
 import { api } from '../services/api'
-import { SectionHeader } from '../components/ui'
+import { SectionHeader } from '../components/ui/index'
 import { auth } from '../services/firebase'
 import { updateProfile } from 'firebase/auth'
 import { useNavigate } from 'react-router-dom'
@@ -164,7 +164,6 @@ function EditProfileModal({ onClose, firebaseUser, dbUser, setDbUser }) {
   )
 }
 
-/* Main Page  */
 export default function SettingsPage() {
   const { firebaseUser, dbUser, setDbUser, signOut } = useAuth()
   const navigate = useNavigate()
@@ -187,7 +186,6 @@ export default function SettingsPage() {
 
   const handleSignOut = async () => {
     await signOut()
-    navigate('/login')
   }
 
   const displayName = dbUser?.name || firebaseUser?.displayName || 'Learner'

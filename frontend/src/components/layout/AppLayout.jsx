@@ -10,7 +10,7 @@ import clsx from 'clsx'
 
 const navItems = [
   { to: '/dashboard',    icon: LayoutDashboard, label: 'Dashboard' },
-  { to: '/learn',        icon: BookOpen,         label: 'Learn' },
+  { to: '/learn/sessions',        icon: BookOpen,         label: 'Learn' },
   { to: '/analytics',   icon: BarChart2,        label: 'Analytics' },
   { to: '/achievements', icon: Trophy,           label: 'Achievements' },
   { to: '/settings',    icon: Settings,         label: 'Settings' },
@@ -56,7 +56,6 @@ export default function AppLayout() {
 
   const handleSignOut = async () => {
     await signOut()
-    navigate('/auth')
   }
 
   const sidebarBg = 'var(--surface)'
@@ -66,7 +65,7 @@ export default function AppLayout() {
     <aside style={{
       display:'flex',flexDirection:'column',
       background:sidebarBg,borderRight:sidebarBorder,
-      width: mobile ? 240 : collapsed ? 64 : 224,
+      width: mobile ? 240 : collapsed ? 84 : 224,
       height:'100vh',
       position: mobile ? 'fixed' : 'relative',
       left:0,top:0,
@@ -80,13 +79,13 @@ export default function AppLayout() {
         padding: collapsed&&!mobile ? '18px 16px':'18px 16px',borderBottom:'1px solid var(--border)' }}>
         {(!collapsed||mobile) && <Logo />}
         {collapsed&&!mobile && (
-          <div style={{ width:32,height:32,borderRadius:10,background:'linear-gradient(135deg,var(--accent),#7c5fff)',display:'flex',alignItems:'center',justifyContent:'center' }}>
-            <BookOpen size={15} color="#fff" strokeWidth={2} />
+          <div style={{ width:30,height:24,borderRadius:10,background:'linear-gradient(135deg,var(--accent),#7c5fff)',display:'flex',alignItems:'center',justifyContent:'center' }}>
+            <BookOpen size={13} color="#fff" strokeWidth={2} />
           </div>
         )}
         {!mobile && (
           <button onClick={()=>setCollapsed(c=>!c)}
-            style={{ padding:6,borderRadius:8,border:'1px solid var(--border)',background:'transparent',color:'var(--text-muted)',cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',marginLeft:8 }}>
+            style={{ padding:4,borderRadius:8,border:'1px solid var(--border)',background:'transparent',color:'var(--text-muted)',cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',marginLeft:8 }}>
             <ChevronRight size={13} style={{ transform:collapsed?'rotate(0)':'rotate(180deg)',transition:'transform 0.25s' }} />
           </button>
         )}
@@ -169,19 +168,67 @@ export default function AppLayout() {
       {/* Main */}
       <div style={{ flex:1,display:'flex',flexDirection:'column',minWidth:0,overflow:'hidden' }}>
         {/* Mobile top bar */}
-        <div className="md:hidden" style={{ alignItems:'center',gap:12,padding:'12px 16px',borderBottom:'1px solid var(--border)',background:'var(--surface)' }}>
-          <button onClick={()=>setMobileOpen(true)} style={{ background:'none',border:'none',cursor:'pointer',color:'var(--text-muted)',display:'flex',alignItems:'center' }}>
-            <Menu size={20}/>
-          </button>
-          <span style={{ fontFamily:"'Playfair Display',serif",fontWeight:700,fontSize:16,color:'var(--text)' }}>Conceptly</span>
-          <div style={{ marginLeft:'auto',display:'flex',alignItems:'center',gap:8 }}>
-            <button onClick={toggle} style={{ background:'none',border:'none',cursor:'pointer',color:'var(--text-muted)',display:'flex',alignItems:'center',padding:4 }}>
-              {isDark?<Sun size={15}/>:<Moon size={15}/>}
+          <div
+            className="flex md:hidden items-center gap-3 px-4 py-3 border-b"
+            style={{ borderColor: 'var(--border)', background: 'var(--surface)' }}
+          >
+            <button
+              onClick={() => setMobileOpen(true)}
+              style={{
+                background: 'none',
+                border: 'none',
+                cursor: 'pointer',
+                color: 'var(--text-muted)',
+                display: 'flex',
+                alignItems: 'center',
+              }}
+            >
+              <Menu size={20} />
             </button>
-            <Zap size={14} style={{ color:'var(--amber)' }} />
-            <span style={{ fontSize:12,fontFamily:'JetBrains Mono,monospace',color:'var(--accent)',fontWeight:600 }}>{user.xp} XP</span>
+
+            <span
+              style={{
+                fontFamily: "'Playfair Display',serif",
+                fontWeight: 700,
+                fontSize: 16,
+                color: 'var(--text)',
+              }}
+            >
+              Conceptly
+            </span>
+
+            <div
+              className="flex items-center gap-2 ml-auto"
+            >
+              <button
+                onClick={toggle}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  cursor: 'pointer',
+                  color: 'var(--text-muted)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  padding: 4,
+                }}
+              >
+                {isDark ? <Sun size={15} /> : <Moon size={15} />}
+              </button>
+
+              <Zap size={14} style={{ color: 'var(--amber)' }} />
+
+              <span
+                style={{
+                  fontSize: 12,
+                  fontFamily: 'JetBrains Mono,monospace',
+                  color: 'var(--accent)',
+                  fontWeight: 600,
+                }}
+              >
+                {user.xp} XP
+              </span>
+            </div>
           </div>
-        </div>
 
         <main style={{ flex:1,overflowY:'auto' }}>
           <Outlet />

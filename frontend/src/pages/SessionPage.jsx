@@ -1,58 +1,53 @@
 import React, { useEffect, useState, useCallback, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { api } from '../services/api'
-import { Skeleton, LevelBadge, Spinner } from '../components/ui'
+import { Skeleton, LevelBadge, Spinner } from '../components/ui/index'
 import QuizPanel from '../components/quiz/QuizPanel'
 import FeynmanPanel from '../components/checkpoint/FeynmanPanel'
-import GamePathStepper from '../components/checkpoint/GamePathStepper'  
+import GamePathStepper from '../components/checkpoint/GamePathStepper'
 import toast from 'react-hot-toast'
 import clsx from 'clsx'
 import {
-  ChevronLeft, CheckCircle2, Clock, Zap,
-  BookOpen, FlaskConical, BrainCircuit, FileText,
-  ChevronRight, Trophy, RefreshCw
+  ChevronLeft, CheckCircle2, Zap, BookOpen,
+  FlaskConical, BrainCircuit, ChevronRight, Trophy, RefreshCw
 } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
 
 function ContentSkeleton() {
   return (
-    <div className="space-y-4 animate-pulse">
-      <Skeleton className="h-6 w-2/3" />
+    <div className="space-y-3 animate-pulse">
+      <Skeleton className="h-5 w-2/3" />
       <Skeleton className="h-4 w-full" />
       <Skeleton className="h-4 w-5/6" />
       <Skeleton className="h-4 w-4/5" />
-      <div className="h-4" />
+      <div className="h-3" />
       <Skeleton className="h-4 w-full" />
       <Skeleton className="h-4 w-3/4" />
-      <Skeleton className="h-4 w-5/6" />
     </div>
   )
 }
 
-function TabBar({ tab, setTab, quizPassed }) {
+function TabBar({ tab, setTab, quizUnlocked, feynmanUnlocked, quizPassed }) {
   const tabs = [
-    { id: 'learn',   icon: BookOpen,      label: 'Learn' },
-    { id: 'quiz',    icon: FlaskConical,  label: 'Quiz' },
-    { id: 'feynman', icon: BrainCircuit,  label: 'Re-teach' },
-    { id: 'notes',   icon: FileText,      label: 'Notes' },
+    { id: 'learn',   icon: BookOpen,     label: 'Learn',    always: true },
+    { id: 'quiz',    icon: FlaskConical, label: 'Quiz',     always: false, show: quizUnlocked },
+    { id: 'feynman', icon: BrainCircuit, label: 'Re-teach', always: false, show: feynmanUnlocked },
   ]
   return (
     <div className="flex gap-1 bg-surface/60 p-1 rounded-xl w-fit mb-6 border border-border">
-      {tabs.map(({ id, icon: Icon, label }) => (
+      {tabs.filter(t => t.always || t.show).map(({ id, icon: Icon, label }) => (
         <button
           key={id}
           onClick={() => setTab(id)}
           className={clsx(
             'flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-semibold font-body transition-all',
-            tab === id
-              ? 'bg-card text-text shadow-sm'
-              : 'text-muted hover:text-text'
+            tab === id ? 'bg-card text-[#A78BFA] shadow-sm' : 'text-muted hover:text-[#A78BFA]'
           )}
         >
           <Icon size={13} strokeWidth={1.8} />
           {label}
           {id === 'quiz' && quizPassed && (
-            <span className="ml-1 w-1.5 h-1.5 rounded-full bg-accent3 inline-block" />
+            <span className="ml-1 w-1.5 h-1.5 rounded-full bg-[var(--accent3)] inline-block" />
           )}
         </button>
       ))}
@@ -60,85 +55,53 @@ function TabBar({ tab, setTab, quizPassed }) {
   )
 }
 
-function LearnTab({ cp, content, loadingContent }) {
+function LearnTab({ cp, content, loadingContent, onProceedToQuiz }) {
   return (
-    <div className="space-y-6">
+    <div className="space-y-5">
       <div className="card p-5">
         <div className="text-[10px] tracking-widest uppercase text-muted mb-3">Learning Objectives</div>
         <div className="space-y-2">
           {cp.objectives?.map((obj, i) => (
             <div key={i} className="flex gap-3 items-start">
-              <span className="text-accent3 mt-0.5 flex-shrink-0">◆</span>
-              <span className="text-sm text-text leading-relaxed font-body">{obj}</span>
+              <span className="text-[var(--accent3)] mt-0.5 flex-shrink-0">◆</span>
+              <span className="text-sm text-[#A78BFA] leading-relaxed font-body">{obj}</span>
             </div>
           ))}
         </div>
       </div>
 
-      <div className="card p-5">
+      {cp.key_concepts?.length > 0 && (<div className="card p-5">
         <div className="text-[10px] tracking-widest uppercase text-muted mb-3">Key Concepts</div>
         <div className="flex flex-wrap gap-2">
           {cp.key_concepts?.map(k => (
             <span key={k} className="pill pill-purple font-mono text-[11px]">{k}</span>
           ))}
         </div>
-      </div>
+      </div>)}
 
       <div className="card p-5">
         <div className="flex items-center gap-2 mb-4">
-          <div className="w-2 h-2 rounded-full bg-accent3 animate-pulse" />
-          <div className="text-[10px] tracking-widest uppercase text-accent3">AI-Generated Explanation</div>
+          <div className="w-2 h-2 rounded-full bg-[var(--accent3)] animate-pulse" />
+          <div className="text-[10px] tracking-widest uppercase text-[var(--accent3)]">
+            AI-Generated Explanation
+            {content?.rag_augmented && (
+              <span className="ml-2 pill pill-green text-[9px]">🔗 RAG</span>
+            )}
+          </div>
         </div>
         {loadingContent ? <ContentSkeleton /> : (
-          <div className="prose prose-invert prose-sm max-w-none font-body leading-relaxed text-muted">
+          <div className="prose prose-invert prose-sm max-w-none font-body leading-relaxed text-dim">
             <ReactMarkdown>{content?.explanation || '*Generating explanation…*'}</ReactMarkdown>
           </div>
         )}
       </div>
-    </div>
-  )
-}
 
-function NotesTab({ sessionId, checkpoints }) {
-  const [type, setType] = useState('comprehensive')
-  const [notes, setNotes] = useState('')
-  const [loading, setLoading] = useState(false)
-
-  const generate = async () => {
-    setLoading(true)
-    try {
-      const res = await api.generateNotes(sessionId, type)
-      setNotes(res.content)
-    } catch (err) {
-      toast.error(err.message)
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  return (
-    <div className="space-y-4">
-      <div className="card p-5">
-        <div className="text-[10px] tracking-widest uppercase text-muted mb-4">Generate Study Notes</div>
-        <div className="flex gap-2 mb-4">
-          {[['comprehensive','📒 Full Notes'], ['cheatsheet','⚡ Cheat Sheet'], ['practice','📝 Practice Qs']].map(([val, label]) => (
-            <button key={val} onClick={() => setType(val)}
-              className={clsx('text-xs px-3 py-2 rounded-lg border transition-all font-body',
-                type === val ? 'border-accent bg-accent/10 text-purple-300' : 'border-border text-muted hover:border-accent/40')}>
-              {label}
-            </button>
-          ))}
-        </div>
-        <button onClick={generate} disabled={loading} className="btn-primary flex items-center gap-2">
-          {loading ? <><Spinner size={14} />Generating…</> : 'Generate Notes'}
-        </button>
-      </div>
-
-      {notes && (
-        <div className="card p-5">
-          <div className="prose prose-invert prose-sm max-w-none font-body leading-relaxed text-muted">
-            <ReactMarkdown>{notes}</ReactMarkdown>
-          </div>
+      {/* CTA */}
+      {!loadingContent && (
+        <div className="flex justify-end">
+          <button onClick={onProceedToQuiz} className="btn-primary gap-2">
+            Take Quiz <ChevronRight size={14} />
+          </button>
         </div>
       )}
     </div>
@@ -158,18 +121,16 @@ export default function SessionPage() {
   const [loadingContent, setLoadingContent] = useState(false)
   const [generatingCps, setGeneratingCps]   = useState(false)
   const [quizPassed, setQuizPassed]         = useState(false)
+  const [quizUnlocked, setQuizUnlocked]     = useState(false)
+  const [feynmanVisible, setFeynmanVisible] = useState(false)
   const [completing, setCompleting]         = useState(false)
   const [canComplete, setCanComplete]       = useState(false)
-
-  const [newlyDone, setNewlyDone] = useState(null)
+  const [newlyDone, setNewlyDone]           = useState(null)
 
   useEffect(() => {
     const load = async () => {
       try {
-        const [sess, cps] = await Promise.all([
-          api.getSession(id),
-          api.getCheckpoints(id),
-        ])
+        const [sess, cps] = await Promise.all([api.getSession(id), api.getCheckpoints(id)])
         setSession(sess)
         if (cps.length === 0) {
           setGeneratingCps(true)
@@ -179,12 +140,18 @@ export default function SessionPage() {
           setGeneratingCps(false)
         } else {
           setCheckpoints(cps)
-          const firstIncomplete = cps.findIndex(c => c.status !== 'completed')
-          setActiveIdx(firstIncomplete === -1 ? 0 : firstIncomplete)
+          const lastCompletedIndex = cps.findLastIndex(
+            c => c.status === 'completed'
+          )
+          let nextIndex = lastCompletedIndex + 1
+          if (nextIndex >= cps.length) {
+            nextIndex = cps.length - 1
+          }
+          setActiveIdx(Math.max(0, nextIndex))
         }
-      } catch (err) {
+      } catch {
         toast.error('Failed to load session')
-        navigate('/learn')
+        navigate('/learn/sessions')
       } finally {
         setLoadingSession(false)
       }
@@ -194,13 +161,15 @@ export default function SessionPage() {
 
   useEffect(() => {
     if (!checkpoints[activeIdx]) return
-    const cp = checkpoints[activeIdx]
     setContent(null)
     setLoadingContent(true)
-    api.getCheckpointContent(id, cp.id)
-      .then(setContent)
-      .catch(() => toast.error('Failed to load content'))
-      .finally(() => setLoadingContent(false))
+    setQuizUnlocked(false)
+    setFeynmanVisible(false)
+    setQuizPassed(false)
+    setTab('learn')
+    api.getCheckpointContent(id, checkpoints[activeIdx].id)
+      .then(c => { setContent(c); setLoadingContent(false) })
+      .catch(() => { toast.error('Failed to load content'); setLoadingContent(false) })
   }, [activeIdx, checkpoints.length])
 
   useEffect(() => {
@@ -210,25 +179,51 @@ export default function SessionPage() {
       .catch(() => {})
   }, [checkpoints])
 
+  useEffect(() => {
+    if (!loadingContent && content) setQuizUnlocked(true)
+  }, [loadingContent, content])
+
+  const handleSetTab = (t) => {
+    if (t === 'quiz' && !quizUnlocked) { toast('Read the explanation first!'); return }
+    if (t === 'feynman' && !feynmanVisible) { toast('Complete the quiz first to unlock re-teaching!'); return }
+    setTab(t)
+  }
+
   const handleQuizPass = useCallback(async () => {
     setQuizPassed(true)
     try {
       const fresh = await api.getCheckpoints(id)
-      setNewlyDone(activeIdx)           
+      setNewlyDone(activeIdx)
       setCheckpoints(fresh)
       const canC = await api.canCompleteSession(id)
       setCanComplete(canC.can_complete)
       setTimeout(() => setNewlyDone(null), 1200)
     } catch {}
+    setTimeout(() => {
+      if (activeIdx < checkpoints.length - 1) {
+        setActiveIdx(activeIdx + 1)
+      }
+    }, 4200)
   }, [id, activeIdx])
+
+  const handleShowFeynman = useCallback(() => {
+    setFeynmanVisible(true)
+    setTab('feynman')
+  }, [])
+
+  const handleStepperSelect = (i) => {
+    setActiveIdx(i)
+    setTab('learn')
+    setQuizPassed(false)
+  }
 
   const handleComplete = async () => {
     setCompleting(true)
     try {
       const result = await api.completeSession(id)
-      toast.success(`🎉 Session complete! +${result.total_xp_earned} XP earned`)
+      toast.success(`🎉 Session complete! +${result.total_xp_earned} XP`)
       if (result.level_up) toast.success(`⬆️ Level up! You're now Level ${result.new_level}!`)
-      navigate('/learn')
+      navigate(`/session/${id}/complete`, { state: { result, topic: session.topic, checkpoints } })
     } catch (err) {
       toast.error(err.message)
       setCompleting(false)
@@ -237,22 +232,20 @@ export default function SessionPage() {
 
   const activeCp = checkpoints[activeIdx]
 
-  if (loadingSession) {
-    return (
-      <div className="p-6 md:p-10 max-w-5xl mx-auto">
-        <Skeleton className="h-8 w-64 mb-8" />
-        <div className="grid grid-cols-1 lg:grid-cols-[280px_1fr] gap-6">
-          <div className="space-y-3">{Array(4).fill(0).map((_, i) => <Skeleton key={i} className="h-14" />)}</div>
-          <Skeleton className="h-96" />
-        </div>
+  if (loadingSession) return (
+    <div className="p-6 md:p-10 max-w-5xl mx-auto">
+      <Skeleton className="h-8 w-64 mb-8" />
+      <div className="grid grid-cols-1 lg:grid-cols-[280px_1fr] gap-6">
+        <div className="space-y-3">{[...Array(4)].map((_, i) => <Skeleton key={i} className="h-14" />)}</div>
+        <Skeleton className="h-96" />
       </div>
-    )
-  }
+    </div>
+  )
 
   return (
     <div className="p-6 md:p-8 mx-auto">
       <div className="flex items-start gap-4 mb-8">
-        <button onClick={() => navigate('/learn')} className="mt-1 text-muted hover:text-text transition-colors">
+        <button onClick={() => navigate('/learn/sessions')} className="mt-1 text-muted hover:text-[#A78BFA] transition-colors">
           <ChevronLeft size={20} />
         </button>
         <div className="flex-1 min-w-0">
@@ -269,11 +262,7 @@ export default function SessionPage() {
         </div>
 
         {canComplete && session?.status !== 'completed' && (
-          <button
-            onClick={handleComplete}
-            disabled={completing}
-            className="btn-primary flex items-center gap-2 flex-shrink-0"
-          >
+          <button onClick={handleComplete} disabled={completing} className="btn-primary gap-2 flex-shrink-0">
             {completing ? <Spinner size={14} /> : <Trophy size={14} />}
             Complete Session
           </button>
@@ -281,11 +270,11 @@ export default function SessionPage() {
       </div>
 
       {generatingCps ? (
-        <div className="card p-12 text-center">
+        <div className="card p-16 text-center">
           <div className="flex flex-col items-center gap-4">
-            <div className="w-12 h-12 rounded-full border-2 border-accent border-t-transparent animate-spin" />
+            <div className="w-12 h-12 rounded-full border-2 border-[var(--accent)] border-t-transparent animate-spin" />
             <div className="font-display font-semibold text-lg">Building your learning path…</div>
-            <p className="text-muted text-sm max-w-xs">
+            <p className="text-muted text-sm max-w-xs font-body">
               AI is designing a structured checkpoint roadmap for <em>{session?.topic}</em>
             </p>
           </div>
@@ -293,17 +282,14 @@ export default function SessionPage() {
       ) : (
         <div className="grid grid-cols-1 lg:grid-cols-[290px_1fr] gap-6">
 
-          <div className="card p-5 h-fit lg:sticky lg:top-6">
+          <div className="card p-5 h-fit lg:top-20">
             <div className="text-[10px] tracking-widest uppercase text-muted mb-4">Learning Path</div>
             <GamePathStepper
               checkpoints={checkpoints}
               activeIdx={activeIdx}
               newlyDone={newlyDone}
-              onSelect={i => {
-                setActiveIdx(i)
-                setTab('learn')
-                setQuizPassed(false)
-              }}
+              onSelect={handleStepperSelect}
+              sessionId={id}
             />
           </div>
 
@@ -326,7 +312,7 @@ export default function SessionPage() {
                     </div>
                   </div>
                   {activeCp.status === 'completed' && (
-                    <div className="flex items-center gap-1.5 text-accent3 flex-shrink-0">
+                    <div className="flex items-center gap-1.5 text-[var(--accent3)] flex-shrink-0">
                       <CheckCircle2 size={16} />
                       <span className="text-xs font-semibold font-body">Passed</span>
                     </div>
@@ -334,17 +320,34 @@ export default function SessionPage() {
                 </div>
               </div>
 
-              <TabBar tab={tab} setTab={setTab} quizPassed={quizPassed} />
+              <TabBar
+                tab={tab}
+                setTab={handleSetTab}
+                quizUnlocked={quizUnlocked}
+                feynmanUnlocked={feynmanVisible}
+                quizPassed={quizPassed}
+              />
 
               {tab === 'learn' && (
-                <LearnTab cp={activeCp} content={content} loadingContent={loadingContent} />
+                <LearnTab
+                  cp={activeCp}
+                  content={content}
+                  loadingContent={loadingContent}
+                  onProceedToQuiz={() => handleSetTab('quiz')}
+                />
               )}
               {tab === 'quiz' && (
                 <QuizPanel
                   checkpoint={activeCp}
                   sessionId={id}
                   onPass={handleQuizPass}
-                  onShowFeynman={() => setTab('feynman')}
+                  onShowFeynman={handleShowFeynman}
+                  onNextCheckpoint={() => {
+                    if (activeIdx < checkpoints.length - 1) {
+                      setActiveIdx(activeIdx + 1)
+                      setTab('learn')
+                    }
+                  }}
                 />
               )}
               {tab === 'feynman' && (
@@ -352,20 +355,6 @@ export default function SessionPage() {
                   checkpoint={activeCp}
                   onRetakeQuiz={() => setTab('quiz')}
                 />
-              )}
-              {tab === 'notes' && (
-                <NotesTab sessionId={id} checkpoints={checkpoints} />
-              )}
-
-              {tab === 'learn' && (
-                <div className="mt-4 flex justify-end">
-                  <button
-                    onClick={() => setTab('quiz')}
-                    className="btn-primary flex items-center gap-2"
-                  >
-                    Take Quiz <ChevronRight size={14} />
-                  </button>
-                </div>
               )}
             </div>
           )}

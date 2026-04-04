@@ -1,12 +1,12 @@
 import React, { useEffect, useState } from 'react'
 import { api } from '../../services/api'
-import { Spinner, ScoreRing } from '../ui'
+import { Spinner, ScoreRing } from '../ui/index'
 import toast from 'react-hot-toast'
 import clsx from 'clsx'
 import { CheckCircle2, XCircle, ChevronRight, RefreshCw, BrainCircuit, Zap } from 'lucide-react'
 
 function QuestionCard({ question, idx, selected, submitted, onSelect, disabled }) {
-  const isCorrect = (optIdx) => optIdx === question.correct
+  const isCorrect = (optIdx) => question.options[optIdx] === question.correct_answer
   const isSelected = (optIdx) => optIdx === selected
 
   return (
@@ -15,7 +15,7 @@ function QuestionCard({ question, idx, selected, submitted, onSelect, disabled }
         <span className="text-[11px] font-mono text-accent bg-accent/10 px-2 py-0.5 rounded-md flex-shrink-0 mt-0.5">
           Q{idx + 1}
         </span>
-        <p className="text-sm font-semibold font-body leading-relaxed text-text">{question.question}</p>
+        <p className="text-sm font-semibold font-body leading-relaxed text-[#A78BFA]">{question.question}</p>
       </div>
 
       <div className="space-y-2">
@@ -101,19 +101,26 @@ function ResultPanel({ score, passed, onRetry, onFeynman, onNext }) {
   )
 }
 
-export default function QuizPanel({ checkpoint, sessionId, onPass, onShowFeynman }) {
+export default function QuizPanel({ checkpoint, sessionId, onPass, onShowFeynman, onNextCheckpoint }) {
   const [questions, setQuestions] = useState([])
   const [selected, setSelected]   = useState([])
   const [loading, setLoading]     = useState(true)
   const [submitting, setSubmitting] = useState(false)
   const [result, setResult]       = useState(null)
+  const [attemptCount, setAttemptCount] = useState(0)
+  const [lastWeakAreas, setLastWeakAreas] = useState([])
 
-  const loadQuestions = async () => {
+  const loadQuestions = async (isRetry = false, weakAreas = []) => {
     setLoading(true)
     setResult(null)
     setSelected([])
     try {
-      const res = await api.getCheckpointQuestions(sessionId, checkpoint.id)
+      let res
+      if (isRetry && weakAreas.length > 0) {
+        res = await api.getRetryQuestions(sessionId, checkpoint.id, weakAreas)
+      } else {
+        res = await api.getCheckpointQuestions(sessionId, checkpoint.id)
+      }
       setQuestions(res.questions)
       setSelected(new Array(res.questions.length).fill(null))
     } catch (err) {
@@ -123,7 +130,11 @@ export default function QuizPanel({ checkpoint, sessionId, onPass, onShowFeynman
     }
   }
 
-  useEffect(() => { loadQuestions() }, [checkpoint.id])
+  useEffect(() => {
+    setAttemptCount(0)
+    setLastWeakAreas([])
+    loadQuestions(false, [])
+  }, [checkpoint.id])
 
   const handleSubmit = async () => {
     if (selected.some(s => s === null)) {
@@ -135,15 +146,22 @@ export default function QuizPanel({ checkpoint, sessionId, onPass, onShowFeynman
       const answers = questions.map((q, i) => q.options[selected[i]])
       const res = await api.submitQuiz(checkpoint.id, answers)
       setResult(res)
+      setAttemptCount(c => c + 1)
       if (res.passed) {
         toast.success(`+${res.xp_earned} XP earned!`, { icon: '⚡' })
         onPass(res)
+      } else {
+        setLastWeakAreas(res.weak_areas || [])
       }
     } catch (err) {
       toast.error(err.message)
     } finally {
       setSubmitting(false)
     }
+  }
+
+  const handleRetry = () => {
+    loadQuestions(attemptCount > 0, lastWeakAreas)
   }
 
   if (loading) return (
@@ -161,9 +179,9 @@ export default function QuizPanel({ checkpoint, sessionId, onPass, onShowFeynman
     <ResultPanel
       score={result.score}
       passed={result.passed}
-      onRetry={loadQuestions}
+      onRetry={handleRetry}
       onFeynman={onShowFeynman}
-      onNext={() => {}}
+      onNext={onNextCheckpoint}
     />
   )
 

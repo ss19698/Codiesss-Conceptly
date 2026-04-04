@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react'
-import clsx from 'clsx'
 import { CheckCircle2, Lock, Zap } from 'lucide-react'
-import { LevelBadge } from '../ui'
+import { LevelBadge } from '../ui/index'
+import { api } from '../../services/api'
 
 const STYLES = `
 @keyframes cp-pulse-ring {
@@ -46,7 +46,6 @@ function XPPop({ xp }) {
 function Connector({ fromRight, unlocked }) {
   const stroke = unlocked ? '#7F77DD' : 'var(--color-border-secondary)'
   const dash   = unlocked ? 'none' : '6 5'
-  // fromRight: path curves left → right-to-left diagonal
   const d = fromRight
     ? 'M 30 0 C 30 22, -60 22, -60 44'
     : 'M 30 0 C 30 22, 120 22, 120 44'
@@ -79,7 +78,6 @@ function Connector({ fromRight, unlocked }) {
 }
 
 function CheckpointCard({ cp, index, state, animDelay, onSelect, showXP }) {
-  // state: 'done' | 'active' | 'upcoming' | 'locked'
   const circleStyles = {
     done:     { background: '#E1F5EE', color: '#0F6E56', border: '1.5px solid #1D9E75' },
     active:   { background: '#EEEDFE', color: '#534AB7', border: '1.5px solid #7F77DD',
@@ -147,7 +145,6 @@ function CheckpointCard({ cp, index, state, animDelay, onSelect, showXP }) {
         </div>
       </div>
 
-      {/* Badge */}
       {state === 'done' && (
         <span style={{
           fontSize: 10, padding: '2px 8px', borderRadius: 20,
@@ -199,7 +196,7 @@ function ProgressBar({ checkpoints }) {
 }
 
 
-export default function GamePathStepper({ checkpoints, activeIdx, onSelect, newlyDone }) {
+export default function GamePathStepper({ checkpoints, activeIdx, onSelect, newlyDone, sessionId }) { 
   useEffect(() => { injectStyles() }, [])
   const [xpPopIdx, setXpPopIdx] = useState(null)
   const prevDone = useRef(null)
@@ -207,16 +204,22 @@ export default function GamePathStepper({ checkpoints, activeIdx, onSelect, newl
   useEffect(() => {
     if (newlyDone != null && newlyDone !== prevDone.current) {
       prevDone.current = newlyDone
+      const cp = checkpoints[newlyDone]
+
+      if (cp) {
+        // ✅ Corrected: send body for PUT request
+        api.updateCheckpoint(sessionId, cp.id, { status: 'completed' })
+          .catch(err => console.error("Failed to save checkpoint", err))
+      }
+
       setXpPopIdx(newlyDone)
       const t = setTimeout(() => setXpPopIdx(null), 1100)
       return () => clearTimeout(t)
     }
-  }, [newlyDone])
+  }, [newlyDone, checkpoints, sessionId])
 
   if (!checkpoints.length) return null
-
   const isRight = (i) => i % 2 !== 0
-
   function getState(cp, i) {
     if (cp.status === 'completed') return 'done'
     if (i === activeIdx)           return 'active'
