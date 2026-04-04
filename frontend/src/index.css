@@ -76,7 +76,7 @@
   .bg-surface { background-color: var(--surface); }
   .bg-card    { background-color: var(--card); }
   .border-border { border-color: var(--border); }
-  .text-[#A78BFA]  { color: var(--text); }
+  .text-text  { color: var(--text); }
   .text-muted { color: var(--text-muted); }
   .text-dim   { color: var(--text-dim); }
 

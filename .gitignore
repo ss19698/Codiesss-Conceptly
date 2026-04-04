@@ -1,0 +1,17 @@
+
+backend/venv/
+__pycache__/
+*.pyc
+
+frontend/node_modules/
+
+.env
+frontend/.env
+backend/.env
+
+dist/
+build/
+
+.DS_Store
+
+backend/app/credentials/firebase_service_account.json

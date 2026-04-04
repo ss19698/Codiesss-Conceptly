@@ -1,7 +1,5 @@
 import React from 'react'
 import { Routes, Route, Navigate } from 'react-router-dom'
-import { Toaster } from 'react-hot-toast'
-
 import { AuthProvider, useAuth } from './context/AuthContext'
 import { ThemeProvider } from './context/ThemeContext'
 
@@ -111,20 +109,6 @@ export default function App() {
             <Route path="*" element={<NotFoundPage />} />
 
           </Routes>
-
-          <Toaster
-            position="bottom-right"
-            toastOptions={{
-              style: {
-                background: 'var(--card)',
-                color: 'var(--text)',
-                border: '1px solid var(--border)',
-                fontFamily: "'Plus Jakarta Sans', sans-serif",
-                fontSize: '13px',
-              },
-            }}
-          />
-
         </div>
 
       </AuthProvider>
