@@ -34,8 +34,6 @@ app.include_router(gamification.router)
 async def on_startup():
     print("Starting Conceptly API")
     try:
-        from app.models import Base
-        Base.metadata.drop_all(bind=engine)   # ← ADD THIS
         init_db()
         print("Database initialized")
     except Exception as e:
