@@ -1,153 +1,145 @@
-from sqlalchemy import Column, Integer, String, Float, DateTime, ForeignKey, Boolean, Text, JSON
-from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import relationship
+"""
+models.py – Firestore document helpers.
+
+Replaces SQLAlchemy ORM models. Firestore is schema-less so there are no
+table definitions; this module provides:
+  • Collection name constants
+  • Helper functions for creating default document dicts
+  • A lightweight counter helper (Firestore has no auto-increment PKs;
+    we use Firebase UID as user id and Firestore-generated IDs elsewhere)
+"""
 from datetime import datetime
 
-Base = declarative_base()
+# ── Collection names ──────────────────────────────────────────────────────────
+
+USERS            = "users"
+SESSIONS         = "learning_sessions"
+CHECKPOINTS      = "checkpoints"
+QUIZ_ATTEMPTS    = "quiz_attempts"
+USER_ANALYTICS   = "user_analytics"
+USER_BADGES      = "user_badges"
+WEAK_TOPICS      = "weak_topics"
+DAILY_CHALLENGES = "daily_challenges"
+USER_NOTES       = "user_notes"
 
 
-class User(Base):
-    __tablename__ = "users"
+# ── Default document factories ────────────────────────────────────────────────
 
-    id = Column(Integer, primary_key=True, index=True)
-    firebase_uid = Column(String, unique=True, index=True, nullable=False)  
-    email = Column(String, unique=True, index=True, nullable=False)
-    name = Column(String, nullable=False)
-    tutor_mode = Column(String, default="supportive_buddy")
-    xp = Column(Integer, default=0)
-    level = Column(Integer, default=1)
-    created_at = Column(DateTime, default=datetime.utcnow)
-
-    sessions = relationship("LearningSession", back_populates="user")
-    badges = relationship("UserBadge", back_populates="user")
-    analytics = relationship("UserAnalytics", back_populates="user", uselist=False)
-    weak_topics = relationship("WeakTopic", back_populates="user")
-    challenges = relationship("DailyChallenge", back_populates="user")
-    notes = relationship("UserNote", back_populates="user")
+def default_user(firebase_uid: str, email: str, name: str) -> dict:
+    return {
+        "firebase_uid": firebase_uid,
+        "email": email,
+        "name": name or "Learner",
+        "tutor_mode": "supportive_buddy",
+        "xp": 0,
+        "level": 1,
+        "created_at": datetime.utcnow().isoformat(),
+    }
 
 
-class LearningSession(Base):
-    __tablename__ = "learning_sessions"
-
-    id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(Integer, ForeignKey("users.id"))
-    topic = Column(String, nullable=False)
-    user_notes = Column(Text)
-    created_at = Column(DateTime, default=datetime.utcnow)
-    completed_at = Column(DateTime)
-    status = Column(String, default="in_progress")
-    xp_earned = Column(Integer, default=0)
-
-    user = relationship("User", back_populates="sessions")
-    checkpoints = relationship("Checkpoint", back_populates="session")
-
-
-class Checkpoint(Base):
-    __tablename__ = "checkpoints"
-
-    id = Column(Integer, primary_key=True, index=True)
-    session_id = Column(Integer, ForeignKey("learning_sessions.id"))
-    checkpoint_index = Column(Integer)
-    topic = Column(String)
-    objectives = Column(JSON)
-    key_concepts = Column(JSON)
-    level = Column(String)
-    status = Column(String, default="pending")
-    understanding_score = Column(Float)
-    attempts = Column(Integer, default=0)
-    completed_at = Column(DateTime)
-    xp_earned = Column(Integer, default=0)
-
-    context = Column(Text)
-    explanation = Column(Text)
-    content_generated = Column(Boolean, default=False)
-    questions_cache = Column(JSON)
-    validation_score = Column(Float)
-
-    session = relationship("LearningSession", back_populates="checkpoints")
-    quiz_attempts = relationship("QuizAttempt", back_populates="checkpoint")
+def default_analytics(user_id: str) -> dict:
+    return {
+        "user_id": user_id,
+        "total_sessions": 0,
+        "completed_sessions": 0,
+        "total_checkpoints": 0,
+        "avg_score": 0.0,
+        "total_time_minutes": 0,
+        "current_streak": 0,
+        "longest_streak": 0,
+        "last_study_date": None,
+        "updated_at": datetime.utcnow().isoformat(),
+    }
 
 
-class QuizAttempt(Base):
-    __tablename__ = "quiz_attempts"
-
-    id = Column(Integer, primary_key=True, index=True)
-    checkpoint_id = Column(Integer, ForeignKey("checkpoints.id"))
-    attempt_number = Column(Integer)
-    score = Column(Float)
-    correct_count = Column(Integer)
-    total_questions = Column(Integer)
-    answers = Column(JSON)
-    questions_used = Column(JSON)
-    attempted_at = Column(DateTime, default=datetime.utcnow)
-
-    checkpoint = relationship("Checkpoint", back_populates="quiz_attempts")
+def default_session(user_id: str, topic: str, user_notes: str = "") -> dict:
+    return {
+        "user_id": user_id,
+        "topic": topic,
+        "user_notes": user_notes or "",
+        "status": "in_progress",
+        "xp_earned": 0,
+        "created_at": datetime.utcnow().isoformat(),
+        "completed_at": None,
+    }
 
 
-class UserAnalytics(Base):
-    __tablename__ = "user_analytics"
-
-    id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(Integer, ForeignKey("users.id"), unique=True)
-    total_sessions = Column(Integer, default=0)
-    completed_sessions = Column(Integer, default=0)
-    total_checkpoints = Column(Integer, default=0)
-    avg_score = Column(Float, default=0.0)
-    total_time_minutes = Column(Integer, default=0)
-    current_streak = Column(Integer, default=0)
-    longest_streak = Column(Integer, default=0)
-    last_study_date = Column(DateTime)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
-
-    user = relationship("User", back_populates="analytics")
-
-
-class UserBadge(Base):
-    __tablename__ = "user_badges"
-
-    id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(Integer, ForeignKey("users.id"))
-    badge_name = Column(String)
-    badge_type = Column(String)
-    description = Column(String)
-    earned_at = Column(DateTime, default=datetime.utcnow)
-
-    user = relationship("User", back_populates="badges")
+def default_checkpoint(session_id: str, idx: int, cp_data: dict) -> dict:
+    return {
+        "session_id": session_id,
+        "checkpoint_index": idx,
+        "topic": cp_data.get("topic", ""),
+        "objectives": cp_data.get("objectives", []),
+        "key_concepts": cp_data.get("key_concepts", []),
+        "level": cp_data.get("level", "intermediate"),
+        "status": "pending",
+        "understanding_score": None,
+        "attempts": 0,
+        "completed_at": None,
+        "xp_earned": 0,
+        "context": None,
+        "explanation": None,
+        "content_generated": False,
+        "questions_cache": None,
+        "validation_score": None,
+    }
 
 
-class WeakTopic(Base):
-    __tablename__ = "weak_topics"
-
-    id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(Integer, ForeignKey("users.id"))
-    topic = Column(String)
-    concept = Column(String)
-    strength_score = Column(Float)
-    last_practiced = Column(DateTime, default=datetime.utcnow)
-
-    user = relationship("User", back_populates="weak_topics")
-
-
-class DailyChallenge(Base):
-    __tablename__ = "daily_challenges"
-
-    id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(Integer, ForeignKey("users.id"))
-    task = Column(String)
-    bonus_xp = Column(Integer)
-    completed = Column(Boolean, default=False)
-    date = Column(DateTime, default=datetime.utcnow)
-
-    user = relationship("User", back_populates="challenges")
+def default_quiz_attempt(
+    checkpoint_id: str,
+    attempt_number: int,
+    score: float,
+    correct_count: int,
+    total_questions: int,
+    answers: list,
+    questions_used: list,
+) -> dict:
+    return {
+        "checkpoint_id": checkpoint_id,
+        "attempt_number": attempt_number,
+        "score": score,
+        "correct_count": correct_count,
+        "total_questions": total_questions,
+        "answers": answers,
+        "questions_used": questions_used,
+        "attempted_at": datetime.utcnow().isoformat(),
+    }
 
 
-class UserNote(Base):
-    __tablename__ = "user_notes"
+def default_weak_topic(user_id: str, topic: str, concept: str) -> dict:
+    return {
+        "user_id": user_id,
+        "topic": topic,
+        "concept": concept[:100],
+        "strength_score": 0.5,
+        "last_practiced": datetime.utcnow().isoformat(),
+    }
 
-    id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(Integer, ForeignKey("users.id"))
-    session_id = Column(Integer, ForeignKey("learning_sessions.id"))
-    content = Column(Text)
-    created_at = Column(DateTime, default=datetime.utcnow)
 
-    user = relationship("User", back_populates="notes")
+def default_badge(user_id: str, name: str, badge_type: str, description: str) -> dict:
+    return {
+        "user_id": user_id,
+        "badge_name": name,
+        "badge_type": badge_type,
+        "description": description,
+        "earned_at": datetime.utcnow().isoformat(),
+    }
+
+
+def default_note(user_id: str, session_id: str, content: str) -> dict:
+    return {
+        "user_id": user_id,
+        "session_id": session_id,
+        "content": content,
+        "created_at": datetime.utcnow().isoformat(),
+    }
+
+
+def default_challenge(user_id: str, task: str, bonus_xp: int = 50) -> dict:
+    return {
+        "user_id": user_id,
+        "task": task,
+        "bonus_xp": bonus_xp,
+        "completed": False,
+        "date": datetime.utcnow().isoformat(),
+    }

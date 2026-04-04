@@ -1,430 +1,416 @@
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
-from sqlalchemy.orm import Session
-from typing import List, Optional
 from datetime import datetime
-from app.database import get_db
-from app.models import User, LearningSession, Checkpoint, UserAnalytics, UserNote
-from app.schemas import SessionCreate, SessionResponse, CheckpointResponse
+from typing import List, Optional
+
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
+from pydantic import BaseModel
+
 from app.dependencies import get_current_user
+from app.firebase import db
+from app.models import (
+    USERS, SESSIONS, CHECKPOINTS, USER_ANALYTICS, USER_NOTES,
+    WEAK_TOPICS,
+    default_session, default_checkpoint, default_note,
+)
 from app.services import checkpoint_generator, notes_generator, question_generator
 from app.services.workflow import run_checkpoint_workflow
 
 router = APIRouter(prefix="/sessions", tags=["sessions"])
 
-def _init_rag_for_session(session: LearningSession) -> None:
-    if not session.user_notes or not session.user_notes.strip():
+
+def _init_rag_for_session(session_id: str, user_notes: str) -> None:
+    if not user_notes or not user_notes.strip():
         return
     try:
         from app.services.rag_service import initialise_session_rag
-        active = initialise_session_rag(session.id, session.user_notes)
+        active = initialise_session_rag(session_id, user_notes)
         if active:
-            print(f"✅ RAG initialised for session {session.id}")
+            print(f"✅ RAG initialised for session {session_id}")
     except Exception as e:
         print(f"⚠️  RAG init failed (non-fatal): {e}")
 
 
-@router.post("/", response_model=SessionResponse)
-def create_session(
-    session: SessionCreate,
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
-):
-    new_session = LearningSession(
-        user_id=current_user["id"],
-        topic=session.topic,
-        user_notes=session.user_notes,
-        status="in_progress",
-    )
-    db.add(new_session)
-    db.commit()
-    db.refresh(new_session)
-
-    analytics = db.query(UserAnalytics).filter(
-        UserAnalytics.user_id == current_user["id"]
-    ).first()
-    if analytics:
-        analytics.total_sessions += 1
-        db.commit()
-
-    _init_rag_for_session(new_session)
-
-    print(f"✓ Created new session: {new_session.topic} (ID: {new_session.id})")
-    return new_session
-
-@router.get("/", response_model=List[SessionResponse])
-def get_sessions(
-    current_user = Depends(get_current_user),
-    db: Session = Depends(get_db),
-):
-    sessions = db.query(LearningSession).filter(
-        LearningSession.user_id == current_user["uid"]
-    ).order_by(LearningSession.created_at.desc()).all()
-
-    return sessions
-@router.get("/{session_id}", response_model=SessionResponse)
-def get_session(
-    session_id: int,
-    current_user = Depends(get_current_user),
-    db: Session = Depends(get_db),
-):
-    session = db.query(LearningSession).filter(
-        LearningSession.id == session_id,
-        LearningSession.user_id == current_user["uid"],
-    ).first()
-
-    if not session:
+def _get_session_or_404(session_id: str, user_id: str) -> dict:
+    doc = db.collection(SESSIONS).document(session_id).get()
+    if not doc.exists:
         raise HTTPException(status_code=404, detail="Session not found")
+    data = doc.to_dict()
+    data["id"] = session_id
+    if data.get("user_id") != user_id:
+        raise HTTPException(status_code=404, detail="Session not found")
+    return data
 
-    _init_rag_for_session(session)
 
-    return session
-    
+def _session_response(data: dict) -> dict:
+    return {
+        "id":           data["id"],
+        "topic":        data.get("topic", ""),
+        "status":       data.get("status", "in_progress"),
+        "created_at":   data.get("created_at"),
+        "completed_at": data.get("completed_at"),
+        "xp_earned":    data.get("xp_earned", 0),
+    }
+
+
+def _checkpoint_response(doc_id: str, data: dict) -> dict:
+    return {
+        "id":                 doc_id,
+        "checkpoint_index":   data.get("checkpoint_index", 0),
+        "topic":              data.get("topic", ""),
+        "objectives":         data.get("objectives", []),
+        "key_concepts":       data.get("key_concepts", []),
+        "level":              data.get("level", "intermediate"),
+        "status":             data.get("status", "pending"),
+        "understanding_score": data.get("understanding_score"),
+        "attempts":           data.get("attempts", 0),
+        "xp_earned":          data.get("xp_earned", 0),
+    }
+
+
+@router.post("/")
+def create_session(
+    topic: str,
+    user_notes: Optional[str] = "",
+    current_user=Depends(get_current_user),
+):
+    uid = current_user["uid"]
+    data = default_session(uid, topic, user_notes)
+    _, ref = db.collection(SESSIONS).add(data)
+    session_id = ref.id
+    data["id"] = session_id
+
+    # bump total_sessions in analytics
+    analytics_ref = db.collection(USER_ANALYTICS).document(uid)
+    analytics_doc = analytics_ref.get()
+    if analytics_doc.exists:
+        analytics_ref.update({"total_sessions": analytics_doc.to_dict().get("total_sessions", 0) + 1})
+
+    _init_rag_for_session(session_id, user_notes)
+
+    print(f"✓ Created new session: {topic} (ID: {session_id})")
+    return _session_response(data)
+
+
+@router.post("/create")
+def create_session_body(
+    body: dict,
+    current_user=Depends(get_current_user),
+):
+    """JSON-body alias so the frontend can POST {topic, user_notes}."""
+    topic = body.get("topic", "")
+    user_notes = body.get("user_notes", "")
+    uid = current_user["uid"]
+    data = default_session(uid, topic, user_notes)
+    _, ref = db.collection(SESSIONS).add(data)
+    session_id = ref.id
+    data["id"] = session_id
+
+    analytics_ref = db.collection(USER_ANALYTICS).document(uid)
+    analytics_doc = analytics_ref.get()
+    if analytics_doc.exists:
+        analytics_ref.update({"total_sessions": analytics_doc.to_dict().get("total_sessions", 0) + 1})
+
+    _init_rag_for_session(session_id, user_notes)
+    print(f"✓ Created new session: {topic} (ID: {session_id})")
+    return _session_response(data)
+
+
+@router.get("/")
+def get_sessions(current_user=Depends(get_current_user)):
+    uid = current_user["uid"]
+    docs = (
+        db.collection(SESSIONS)
+        .where("user_id", "==", uid)
+        .order_by("created_at", direction="DESCENDING")
+        .stream()
+    )
+    return [_session_response({**d.to_dict(), "id": d.id}) for d in docs]
+
+
+@router.get("/{session_id}")
+def get_session(session_id: str, current_user=Depends(get_current_user)):
+    uid = current_user["uid"]
+    session = _get_session_or_404(session_id, uid)
+    _init_rag_for_session(session_id, session.get("user_notes", ""))
+    return _session_response(session)
+
+
 @router.post("/{session_id}/checkpoints")
 def generate_checkpoints_route(
-    session_id: int,
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
+    session_id: str,
+    current_user=Depends(get_current_user),
 ):
-    session = db.query(LearningSession).filter(
-        LearningSession.id == session_id,
-        LearningSession.user_id == current_user["id"],
-    ).first()
-    if not session:
-        raise HTTPException(status_code=404, detail="Session not found")
+    uid = current_user["uid"]
+    session = _get_session_or_404(session_id, uid)
 
-    existing_checkpoints = db.query(Checkpoint).filter(
-        Checkpoint.session_id == session.id
-    ).all()
-
-    if existing_checkpoints:
-        print(f"⚠️ Checkpoints already exist for session {session_id}, returning existing ones")
+    existing = (
+        db.collection(CHECKPOINTS)
+        .where("session_id", "==", session_id)
+        .stream()
+    )
+    existing_list = [{**d.to_dict(), "id": d.id} for d in existing]
+    if existing_list:
+        print(f"⚠️ Checkpoints already exist for session {session_id}, returning existing")
         return {
             "checkpoints": [
                 {
-                    "id": cp.id,
-                    "topic": cp.topic,
-                    "objectives": cp.objectives,
-                    "key_concepts": cp.key_concepts,
-                    "level": cp.level,
+                    "id":                cp["id"],
+                    "topic":             cp.get("topic", ""),
+                    "objectives":        cp.get("objectives", []),
+                    "key_concepts":      cp.get("key_concepts", []),
+                    "level":             cp.get("level", "intermediate"),
                     "success_threshold": 0.7,
                 }
-                for cp in existing_checkpoints
+                for cp in existing_list
             ]
         }
 
-    print(f"📚 Generating checkpoints for session {session_id}: {session.topic}")
-    print(f"👤 User tutor mode: {current_user.tutor_mode}")
+    # Get tutor_mode from user doc
+    user_doc = db.collection(USERS).document(uid).get()
+    tutor_mode = user_doc.to_dict().get("tutor_mode", "supportive_buddy") if user_doc.exists else "supportive_buddy"
 
-    _init_rag_for_session(session)
+    print(f"📚 Generating checkpoints for session {session_id}: {session['topic']}")
 
+    _init_rag_for_session(session_id, session.get("user_notes", ""))
     question_generator.clear_question_history(session_id)
 
     checkpoints = checkpoint_generator.generate_checkpoints(
-        topic=session.topic,
+        topic=session["topic"],
         current_level="beginner",
         target_level="intermediate",
         purpose="general learning",
-        tutor_mode=current_user.tutor_mode,
-        session_id=session_id,             
+        tutor_mode=tutor_mode,
+        session_id=session_id,
     )
 
     print(f"✓ Generated {len(checkpoints)} checkpoint definitions")
 
-    created_checkpoints = []
+    created = []
     for idx, cp_data in enumerate(checkpoints):
-        checkpoint = Checkpoint(
-            session_id=session.id,
-            checkpoint_index=idx,
-            topic=cp_data['topic'],
-            objectives=cp_data['objectives'],
-            key_concepts=cp_data.get('key_concepts', []),
-            level=cp_data.get('level', 'intermediate'),
-            status="pending",
-            content_generated=False,
-        )
-        db.add(checkpoint)
-        created_checkpoints.append(checkpoint)
+        doc_data = default_checkpoint(session_id, idx, cp_data)
+        _, ref = db.collection(CHECKPOINTS).add(doc_data)
+        cp_data["id"] = ref.id
+        created.append(cp_data)
 
-    db.commit()
-    for cp in created_checkpoints:
-        db.refresh(cp)
+    print(f"✓ Saved {len(created)} checkpoints to Firestore")
+    return {"checkpoints": created}
 
-    print(f"✓ Saved {len(created_checkpoints)} checkpoints to database")
-    return {"checkpoints": checkpoints}
 
-@router.get("/{session_id}/checkpoints", response_model=List[CheckpointResponse])
-def get_checkpoints(
-    session_id: int,
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
-):
-    session = db.query(LearningSession).filter(
-        LearningSession.id == session_id,
-        LearningSession.user_id == current_user["id"],
-    ).first()
-    if not session:
-        raise HTTPException(status_code=404, detail="Session not found")
+@router.get("/{session_id}/checkpoints")
+def get_checkpoints(session_id: str, current_user=Depends(get_current_user)):
+    uid = current_user["uid"]
+    _get_session_or_404(session_id, uid)
 
-    checkpoints = db.query(Checkpoint).filter(
-        Checkpoint.session_id == session.id
-    ).order_by(Checkpoint.checkpoint_index).all()
-    return checkpoints
+    docs = (
+        db.collection(CHECKPOINTS)
+        .where("session_id", "==", session_id)
+        .order_by("checkpoint_index")
+        .stream()
+    )
+    return [_checkpoint_response(d.id, d.to_dict()) for d in docs]
+
 
 @router.get("/{session_id}/checkpoints/{checkpoint_id}/content")
 def get_checkpoint_content(
-    session_id: int,
-    checkpoint_id: int,
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
+    session_id: str,
+    checkpoint_id: str,
+    current_user=Depends(get_current_user),
 ):
-    checkpoint = db.query(Checkpoint).filter(
-        Checkpoint.id == checkpoint_id,
-        Checkpoint.session_id == session_id,
-    ).first()
-    if not checkpoint:
+    uid = current_user["uid"]
+    cp_doc = db.collection(CHECKPOINTS).document(checkpoint_id).get()
+    if not cp_doc.exists or cp_doc.to_dict().get("session_id") != session_id:
         raise HTTPException(status_code=404, detail="Checkpoint not found")
 
-    if checkpoint.content_generated and checkpoint.context and checkpoint.explanation:
+    cp = cp_doc.to_dict()
+
+    if cp.get("content_generated") and cp.get("context") and cp.get("explanation"):
         print(f"✓ Returning cached content for checkpoint {checkpoint_id}")
         return {
-            "context": checkpoint.context,
-            "explanation": checkpoint.explanation,
-            "validation_score": checkpoint.validation_score,
+            "context":          cp["context"],
+            "explanation":      cp["explanation"],
+            "validation_score": cp.get("validation_score"),
         }
 
-    print(f"📝 Generating content for checkpoint {checkpoint_id}: {checkpoint.topic}")
-    print(f"👤 Using tutor mode: {current_user.tutor_mode}")
+    print(f"📝 Generating content for checkpoint {checkpoint_id}: {cp['topic']}")
 
-    session = db.query(LearningSession).filter(
-        LearningSession.id == session_id
-    ).first()
-    if session:
-        _init_rag_for_session(session)
+    session = _get_session_or_404(session_id, uid)
+    _init_rag_for_session(session_id, session.get("user_notes", ""))
+
+    user_doc = db.collection(USERS).document(uid).get()
+    tutor_mode = user_doc.to_dict().get("tutor_mode", "supportive_buddy") if user_doc.exists else "supportive_buddy"
 
     checkpoint_data = {
-        "id": checkpoint.id,
-        "topic": checkpoint.topic,
-        "objectives": checkpoint.objectives,
-        "key_concepts": checkpoint.key_concepts,
-        "level": checkpoint.level,
+        "id":           checkpoint_id,
+        "topic":        cp["topic"],
+        "objectives":   cp.get("objectives", []),
+        "key_concepts": cp.get("key_concepts", []),
+        "level":        cp.get("level", "intermediate"),
     }
 
     result = run_checkpoint_workflow(
         checkpoint=checkpoint_data,
-        tutor_mode=current_user.tutor_mode,
-        session_id=session_id,             
+        tutor_mode=tutor_mode,
+        session_id=session_id,
     )
 
-    checkpoint.context = result['context']
-    checkpoint.explanation = result['explanation']
-    checkpoint.validation_score = result['validation_score']
-    checkpoint.content_generated = True
-
-    db.commit()
-    db.refresh(checkpoint)
+    db.collection(CHECKPOINTS).document(checkpoint_id).update({
+        "context":          result["context"],
+        "explanation":      result["explanation"],
+        "validation_score": result["validation_score"],
+        "content_generated": True,
+    })
 
     print(f"✓ Content generated and cached for checkpoint {checkpoint_id}")
     return {
-        "context": result['context'],
-        "explanation": result['explanation'],
-        "validation_score": result['validation_score'],
+        "context":          result["context"],
+        "explanation":      result["explanation"],
+        "validation_score": result["validation_score"],
     }
+
 
 @router.get("/{session_id}/checkpoints/{checkpoint_id}/questions")
 def get_checkpoint_questions(
-    session_id: int,
-    checkpoint_id: int,
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
+    session_id: str,
+    checkpoint_id: str,
+    current_user=Depends(get_current_user),
 ):
-    checkpoint = db.query(Checkpoint).filter(
-        Checkpoint.id == checkpoint_id,
-        Checkpoint.session_id == session_id,
-    ).first()
-    if not checkpoint:
+    uid = current_user["uid"]
+    cp_doc = db.collection(CHECKPOINTS).document(checkpoint_id).get()
+    if not cp_doc.exists or cp_doc.to_dict().get("session_id") != session_id:
         raise HTTPException(status_code=404, detail="Checkpoint not found")
 
-    if checkpoint.questions_cache:
+    cp = cp_doc.to_dict()
+
+    if cp.get("questions_cache"):
         print(f"✓ Returning cached questions for checkpoint {checkpoint_id}")
-        return {"questions": checkpoint.questions_cache}
+        return {"questions": cp["questions_cache"]}
 
-    print(f"❓ Generating questions for checkpoint {checkpoint_id}: {checkpoint.topic}")
-    print(f"👤 Using tutor mode: {current_user.tutor_mode}")
+    session = _get_session_or_404(session_id, uid)
+    _init_rag_for_session(session_id, session.get("user_notes", ""))
 
-    session = db.query(LearningSession).filter(
-        LearningSession.id == session_id
-    ).first()
-    if session:
-        _init_rag_for_session(session)
+    user_doc = db.collection(USERS).document(uid).get()
+    tutor_mode = user_doc.to_dict().get("tutor_mode", "supportive_buddy") if user_doc.exists else "supportive_buddy"
 
     checkpoint_data = {
-        "id": checkpoint.id,
-        "topic": checkpoint.topic,
-        "objectives": checkpoint.objectives,
-        "key_concepts": checkpoint.key_concepts,
-        "level": checkpoint.level,
+        "id":           checkpoint_id,
+        "topic":        cp["topic"],
+        "objectives":   cp.get("objectives", []),
+        "key_concepts": cp.get("key_concepts", []),
+        "level":        cp.get("level", "intermediate"),
     }
 
-    if not checkpoint.content_generated:
+    if not cp.get("content_generated"):
         result = run_checkpoint_workflow(
             checkpoint=checkpoint_data,
-            tutor_mode=current_user.tutor_mode,
-            session_id=session_id,        
+            tutor_mode=tutor_mode,
+            session_id=session_id,
         )
-
-        checkpoint.context = result['context']
-        checkpoint.explanation = result['explanation']
-        checkpoint.validation_score = result['validation_score']
-        checkpoint.questions_cache = result['questions']
-        checkpoint.content_generated = True
-
-        db.commit()
-        db.refresh(checkpoint)
-
+        db.collection(CHECKPOINTS).document(checkpoint_id).update({
+            "context":           result["context"],
+            "explanation":       result["explanation"],
+            "validation_score":  result["validation_score"],
+            "questions_cache":   result["questions"],
+            "content_generated": True,
+        })
         print(f"✓ Full content generated for checkpoint {checkpoint_id}")
-        return {"questions": result['questions']}
+        return {"questions": result["questions"]}
 
     questions = question_generator.generate_questions(
         checkpoint=checkpoint_data,
-        context=checkpoint.context,
-        level=checkpoint.level,
-        tutor_mode=current_user.tutor_mode,
-        session_id=session_id,            
+        context=cp.get("context", ""),
+        level=cp.get("level", "intermediate"),
+        tutor_mode=tutor_mode,
+        session_id=session_id,
     )
-
-    checkpoint.questions_cache = questions
-    db.commit()
-
+    db.collection(CHECKPOINTS).document(checkpoint_id).update({"questions_cache": questions})
     print(f"✓ Questions generated and cached for checkpoint {checkpoint_id}")
     return {"questions": questions}
 
 
 @router.post("/{session_id}/checkpoints/{checkpoint_id}/questions/retry")
 def get_retry_questions(
-    session_id: int,
-    checkpoint_id: int,
-    weak_areas: list = None,
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
+    session_id: str,
+    checkpoint_id: str,
+    weak_areas: Optional[List[str]] = None,
+    current_user=Depends(get_current_user),
 ):
-    checkpoint = db.query(Checkpoint).filter(
-        Checkpoint.id == checkpoint_id,
-        Checkpoint.session_id == session_id,
-    ).first()
-    if not checkpoint:
+    uid = current_user["uid"]
+    cp_doc = db.collection(CHECKPOINTS).document(checkpoint_id).get()
+    if not cp_doc.exists or cp_doc.to_dict().get("session_id") != session_id:
         raise HTTPException(status_code=404, detail="Checkpoint not found")
 
-    checkpoint_data = {
-        "id": checkpoint.id,
-        "topic": checkpoint.topic,
-        "objectives": checkpoint.objectives,
-        "key_concepts": checkpoint.key_concepts,
-        "level": checkpoint.level,
-    }
+    cp = cp_doc.to_dict()
 
-    attempt_number = checkpoint.attempts
+    user_doc = db.collection(USERS).document(uid).get()
+    tutor_mode = user_doc.to_dict().get("tutor_mode", "supportive_buddy") if user_doc.exists else "supportive_buddy"
+
+    checkpoint_data = {
+        "id":           checkpoint_id,
+        "topic":        cp["topic"],
+        "objectives":   cp.get("objectives", []),
+        "key_concepts": cp.get("key_concepts", []),
+        "level":        cp.get("level", "intermediate"),
+    }
 
     questions = question_generator.generate_questions(
         checkpoint=checkpoint_data,
-        context=checkpoint.context or "",
-        level=checkpoint.level,
-        tutor_mode=current_user.tutor_mode,
+        context=cp.get("context", ""),
+        level=cp.get("level", "intermediate"),
+        tutor_mode=tutor_mode,
         weak_areas=weak_areas or [],
-        attempt_number=attempt_number,
+        attempt_number=cp.get("attempts", 0),
         session_id=session_id,
     )
 
-    checkpoint.questions_cache = questions
-    db.commit()
-
-    print(f"✓ Retry questions generated for checkpoint {checkpoint_id}, weak areas: {weak_areas}")
+    db.collection(CHECKPOINTS).document(checkpoint_id).update({"questions_cache": questions})
+    print(f"✓ Retry questions generated for checkpoint {checkpoint_id}")
     return {"questions": questions}
-
-def complete_checkpoint(
-    session_id: int,
-    checkpoint_id: int,
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
-):
-    checkpoint = db.query(Checkpoint).filter(
-        Checkpoint.id == checkpoint_id,
-        Checkpoint.session_id == session_id,
-    ).first()
-    if not checkpoint:
-        raise HTTPException(status_code=404, detail="Checkpoint not found")
-
-    checkpoint.status = "completed"
-    checkpoint.completed_at = datetime.utcnow()
-    checkpoint.xp_earned = 2
-
-    current_user.xp += 2
-    if current_user.xp >= (current_user.level * 100):
-        current_user.level += 1
-        print(f"🎉 User leveled up to level {current_user.level}!")
-
-    analytics = db.query(UserAnalytics).filter(
-        UserAnalytics.user_id == current_user["id"]
-    ).first()
-    if analytics:
-        analytics.total_checkpoints += 1
-
-    db.commit()
-    print(f"✓ Checkpoint {checkpoint_id} completed")
-    return {"message": "Checkpoint completed", "xp_earned": 2, "new_level": current_user.level}
 
 
 @router.post("/{session_id}/complete")
-def complete_session(
-    session_id: int,
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
-):
-    session = db.query(LearningSession).filter(
-        LearningSession.id == session_id,
-        LearningSession.user_id == current_user["id"],
-    ).first()
-    if not session:
-        raise HTTPException(status_code=404, detail="Session not found")
+def complete_session(session_id: str, current_user=Depends(get_current_user)):
+    uid = current_user["uid"]
+    session = _get_session_or_404(session_id, uid)
 
-    checkpoints = db.query(Checkpoint).filter(
-        Checkpoint.session_id == session.id
-    ).all()
-    all_completed = all(cp.status == 'completed' for cp in checkpoints)
+    checkpoints_docs = list(
+        db.collection(CHECKPOINTS).where("session_id", "==", session_id).stream()
+    )
+    checkpoints = [d.to_dict() for d in checkpoints_docs]
+    all_completed = all(cp.get("status") == "completed" for cp in checkpoints)
 
     if not all_completed:
-        pending_count = sum(1 for cp in checkpoints if cp.status != 'completed')
+        pending = sum(1 for cp in checkpoints if cp.get("status") != "completed")
         raise HTTPException(
             status_code=400,
-            detail=f"Not all checkpoints completed. {pending_count} checkpoint(s) remaining.",
+            detail=f"Not all checkpoints completed. {pending} remaining.",
         )
 
-    checkpoint_xp = sum(cp.xp_earned for cp in checkpoints)
+    checkpoint_xp = sum(cp.get("xp_earned", 0) for cp in checkpoints)
     bonus_xp = 20
     total_xp = checkpoint_xp + bonus_xp
 
-    session.status = "completed"
-    session.completed_at = datetime.utcnow()
-    session.xp_earned = total_xp
+    db.collection(SESSIONS).document(session_id).update({
+        "status":       "completed",
+        "completed_at": datetime.utcnow().isoformat(),
+        "xp_earned":    total_xp,
+    })
 
-    current_user.xp += total_xp
+    user_ref = db.collection(USERS).document(uid)
+    user_data = user_ref.get().to_dict()
+    new_xp = user_data.get("xp", 0) + total_xp
+    new_level = user_data.get("level", 1)
+    old_level = new_level
+    while new_xp >= new_level * 100:
+        new_level += 1
+    user_ref.update({"xp": new_xp, "level": new_level})
 
-    old_level = current_user.level
-    while current_user.xp >= (current_user.level * 100):
-        current_user.level += 1
-
-    if current_user.level > old_level:
-        print(f"🎉 User leveled up to level {current_user.level}!")
-
-    analytics = db.query(UserAnalytics).filter(
-        UserAnalytics.user_id == current_user["id"]
-    ).first()
-    if analytics:
-        analytics.completed_sessions += 1
-
-    db.commit()
+    analytics_ref = db.collection(USER_ANALYTICS).document(uid)
+    analytics_doc = analytics_ref.get()
+    if analytics_doc.exists:
+        analytics_ref.update({
+            "completed_sessions": analytics_doc.to_dict().get("completed_sessions", 0) + 1
+        })
 
     question_generator.clear_question_history(session_id)
-
     try:
         from app.services.rag_service import clear_session_embeddings
         clear_session_embeddings(session_id)
@@ -433,275 +419,192 @@ def complete_session(
 
     print(f"✓ Session {session_id} completed! Total XP: {total_xp}")
     return {
-        "message": "🎉 Congratulations! Session completed!",
-        "checkpoint_xp": checkpoint_xp,
-        "bonus_xp": bonus_xp,
+        "message":        "🎉 Congratulations! Session completed!",
+        "checkpoint_xp":  checkpoint_xp,
+        "bonus_xp":       bonus_xp,
         "total_xp_earned": total_xp,
-        "new_level": current_user.level,
-        "level_up": current_user.level > old_level,
+        "new_level":      new_level,
+        "level_up":       new_level > old_level,
     }
 
 
 @router.get("/{session_id}/can-complete")
-def can_complete_session(
-    session_id: int,
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
-):
-    session = db.query(LearningSession).filter(
-        LearningSession.id == session_id,
-        LearningSession.user_id == current_user["id"],
-    ).first()
-    if not session:
-        raise HTTPException(status_code=404, detail="Session not found")
+def can_complete_session(session_id: str, current_user=Depends(get_current_user)):
+    uid = current_user["uid"]
+    session = _get_session_or_404(session_id, uid)
 
-    checkpoints = db.query(Checkpoint).filter(
-        Checkpoint.session_id == session.id
-    ).all()
-    completed_count = sum(1 for cp in checkpoints if cp.status == 'completed')
-    total_count = len(checkpoints)
+    docs = list(db.collection(CHECKPOINTS).where("session_id", "==", session_id).stream())
+    checkpoints = [d.to_dict() for d in docs]
+    completed_count = sum(1 for cp in checkpoints if cp.get("status") == "completed")
 
     return {
-        "can_complete": completed_count == total_count,
+        "can_complete":    completed_count == len(checkpoints),
         "completed_count": completed_count,
-        "total_count": total_count,
-        "session_status": session.status,
+        "total_count":     len(checkpoints),
+        "session_status":  session.get("status"),
     }
+
 
 @router.post("/{session_id}/notes/generate")
 def generate_session_notes(
-    session_id: int,
+    session_id: str,
     notes_type: str = "comprehensive",
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
 ):
-    session = db.query(LearningSession).filter(
-        LearningSession.id == session_id,
-        LearningSession.user_id == current_user["id"],
-    ).first()
-    if not session:
-        raise HTTPException(status_code=404, detail="Session not found")
+    uid = current_user["uid"]
+    session = _get_session_or_404(session_id, uid)
 
-    checkpoints = db.query(Checkpoint).filter(
-        Checkpoint.session_id == session.id
-    ).all()
-
+    docs = list(db.collection(CHECKPOINTS).where("session_id", "==", session_id).stream())
     checkpoint_data = [
         {
-            "topic": cp.topic,
-            "objectives": cp.objectives,
-            "key_concepts": cp.key_concepts,
-            "level": cp.level,
+            "topic":        d.to_dict().get("topic", ""),
+            "objectives":   d.to_dict().get("objectives", []),
+            "key_concepts": d.to_dict().get("key_concepts", []),
+            "level":        d.to_dict().get("level", "intermediate"),
         }
-        for cp in checkpoints
+        for d in docs
     ]
 
-    from app.models import WeakTopic
-    weak_topics = db.query(WeakTopic).filter(
-        WeakTopic.user_id == current_user["id"]
-    ).order_by(WeakTopic.strength_score.asc()).limit(5).all()
-    weak_areas = [wt.concept for wt in weak_topics]
+    weak_docs = (
+        db.collection(WEAK_TOPICS)
+        .where("user_id", "==", uid)
+        .order_by("strength_score")
+        .limit(5)
+        .stream()
+    )
+    weak_areas = [d.to_dict().get("concept", "") for d in weak_docs]
 
     if notes_type == "comprehensive":
         notes_content = notes_generator.generate_comprehensive_notes(
-            session.topic, checkpoint_data, weak_areas
+            session["topic"], checkpoint_data, weak_areas
         )
     elif notes_type == "cheatsheet":
-        notes_content = notes_generator.generate_cheat_sheet(
-            session.topic, checkpoint_data
-        )
+        notes_content = notes_generator.generate_cheat_sheet(session["topic"], checkpoint_data)
     else:
-        notes_content = notes_generator.generate_practice_questions(
-            session.topic, checkpoint_data
-        )
+        notes_content = notes_generator.generate_practice_questions(session["topic"], checkpoint_data)
 
-    note = UserNote(
-        user_id=current_user["id"],
-        session_id=session.id,
-        content=notes_content,
-    )
-    db.add(note)
-    db.commit()
-    db.refresh(note)
+    note_data = default_note(uid, session_id, notes_content)
+    _, ref = db.collection(USER_NOTES).add(note_data)
 
     print(f"✓ Generated {notes_type} notes for session {session_id}")
-    return {"note": note, "content": notes_content}
+    return {"note": {"id": ref.id, **note_data}, "content": notes_content}
+
 
 @router.post("/{session_id}/notes/upload")
 async def upload_session_notes(
-    session_id: int,
+    session_id: str,
     notes_text: Optional[str] = Form(None),
     file: Optional[UploadFile] = File(None),
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
 ):
-    session = db.query(LearningSession).filter(
-        LearningSession.id == session_id,
-        LearningSession.user_id == current_user["id"],
-    ).first()
-    if not session:
-        raise HTTPException(status_code=404, detail="Session not found")
+    uid = current_user["uid"]
+    session = _get_session_or_404(session_id, uid)
 
     extracted_text = ""
 
     if notes_text and notes_text.strip():
         extracted_text = notes_text.strip()
-
     elif file:
-        content_type = file.content_type or ""
         raw_bytes = await file.read()
+        content_type = file.content_type or ""
 
-        if "pdf" in content_type or file.filename.lower().endswith(".pdf"):
+        if "pdf" in content_type or (file.filename or "").lower().endswith(".pdf"):
             try:
                 import io
                 import pdfplumber
                 with pdfplumber.open(io.BytesIO(raw_bytes)) as pdf:
-                    pages_text = []
-                    for page in pdf.pages:
-                        t = page.extract_text()
-                        if t:
-                            pages_text.append(t)
-                    extracted_text = "\n\n".join(pages_text)
+                    extracted_text = "\n\n".join(
+                        p.extract_text() for p in pdf.pages if p.extract_text()
+                    )
                 print(f"✅ Extracted {len(extracted_text)} chars from PDF")
             except ImportError:
-                try:
-                    extracted_text = raw_bytes.decode("utf-8", errors="ignore")
-                except Exception:
-                    raise HTTPException(
-                        status_code=422,
-                        detail="PDF parsing requires pdfplumber. "
-                               "Install it with: pip install pdfplumber",
-                    )
+                extracted_text = raw_bytes.decode("utf-8", errors="ignore")
             except Exception as e:
-                raise HTTPException(
-                    status_code=422,
-                    detail=f"Failed to extract text from PDF: {e}",
-                )
+                raise HTTPException(status_code=422, detail=f"Failed to extract PDF: {e}")
         else:
-            try:
-                extracted_text = raw_bytes.decode("utf-8", errors="ignore").strip()
-            except Exception as e:
-                raise HTTPException(
-                    status_code=422,
-                    detail=f"Failed to read file: {e}",
-                )
+            extracted_text = raw_bytes.decode("utf-8", errors="ignore").strip()
 
     if not extracted_text:
-        raise HTTPException(
-            status_code=422,
-            detail="No notes content found. Provide notes_text or a file.",
-        )
-    if session.user_notes:
-        session.user_notes = session.user_notes + "\n\n---\n\n" + extracted_text
-    else:
-        session.user_notes = extracted_text
-    db.commit()
-    note_record = UserNote(
-        user_id=current_user["id"],
-        session_id=session.id,
-        content=extracted_text[:10000],  
-    )
-    db.add(note_record)
-    db.commit()
+        raise HTTPException(status_code=422, detail="No notes content found.")
+
+    existing_notes = session.get("user_notes", "") or ""
+    updated_notes = (existing_notes + "\n\n---\n\n" + extracted_text) if existing_notes else extracted_text
+    db.collection(SESSIONS).document(session_id).update({"user_notes": updated_notes})
+
+    note_data = default_note(uid, session_id, extracted_text[:10000])
+    _, ref = db.collection(USER_NOTES).add(note_data)
 
     rag_active = False
     rag_error = None
     try:
-        from app.services.rag_service import store_embeddings
-        from app.services.rag_service import clear_session_embeddings
+        from app.services.rag_service import store_embeddings, clear_session_embeddings
         clear_session_embeddings(session_id)
-        rag_active = store_embeddings(session_id, session.user_notes)
+        rag_active = store_embeddings(session_id, updated_notes)
     except Exception as e:
         rag_error = str(e)
         print(f"⚠️  RAG embedding failed (non-fatal): {e}")
 
     return {
-        "message": "Notes uploaded successfully",
+        "message":    "Notes uploaded successfully",
         "characters": len(extracted_text),
         "rag_active": rag_active,
-        "rag_error": rag_error,
-        "note_id": note_record.id,
+        "rag_error":  rag_error,
+        "note_id":    ref.id,
     }
-
-from pydantic import BaseModel
-from typing import List as PList
 
 
 class CheckpointUpdate(BaseModel):
     topic: Optional[str] = None
-    objectives: Optional[PList[str]] = None
-    key_concepts: Optional[PList[str]] = None
+    objectives: Optional[List[str]] = None
+    key_concepts: Optional[List[str]] = None
 
 
 @router.put("/{session_id}/checkpoints/{checkpoint_id}")
 def update_checkpoint(
-    session_id: int,
-    checkpoint_id: int,
+    session_id: str,
+    checkpoint_id: str,
     update: CheckpointUpdate,
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
 ):
-    """
-    NEW: Allow the user to edit a checkpoint's topic, objectives, and/or
-    key_concepts BEFORE learning has started (content_generated=False).
+    uid = current_user["uid"]
+    _get_session_or_404(session_id, uid)
 
-    - Already-generated content is invalidated so the workflow re-runs
-      with the updated checkpoint on next access.
-    - Completed checkpoints cannot be edited (status == 'completed').
-    """
-    session = db.query(LearningSession).filter(
-        LearningSession.id == session_id,
-        LearningSession.user_id == current_user["id"],
-    ).first()
-    if not session:
-        raise HTTPException(status_code=404, detail="Session not found")
-
-    checkpoint = db.query(Checkpoint).filter(
-        Checkpoint.id == checkpoint_id,
-        Checkpoint.session_id == session_id,
-    ).first()
-    if not checkpoint:
+    cp_doc = db.collection(CHECKPOINTS).document(checkpoint_id).get()
+    if not cp_doc.exists or cp_doc.to_dict().get("session_id") != session_id:
         raise HTTPException(status_code=404, detail="Checkpoint not found")
 
-    if checkpoint.status == "completed":
-        raise HTTPException(
-            status_code=400,
-            detail="Cannot edit a completed checkpoint.",
-        )
+    cp = cp_doc.to_dict()
+    if cp.get("status") == "completed":
+        raise HTTPException(status_code=400, detail="Cannot edit a completed checkpoint.")
 
-    changed = False
-    if update.topic is not None and update.topic.strip():
-        checkpoint.topic = update.topic.strip()
-        changed = True
+    updates = {}
+    if update.topic and update.topic.strip():
+        updates["topic"] = update.topic.strip()
     if update.objectives is not None:
-        checkpoint.objectives = [o.strip() for o in update.objectives if o.strip()]
-        changed = True
+        updates["objectives"] = [o.strip() for o in update.objectives if o.strip()]
     if update.key_concepts is not None:
-        checkpoint.key_concepts = [k.strip() for k in update.key_concepts if k.strip()]
-        changed = True
+        updates["key_concepts"] = [k.strip() for k in update.key_concepts if k.strip()]
 
-    if not changed:
-        return {
-            "message": "No changes applied (empty update body).",
-            "checkpoint_id": checkpoint_id,
-        }
+    if not updates:
+        return {"message": "No changes applied.", "checkpoint_id": checkpoint_id}
 
-    checkpoint.content_generated = False
-    checkpoint.context = None
-    checkpoint.explanation = None
-    checkpoint.questions_cache = None
-    checkpoint.validation_score = None
+    updates.update({
+        "content_generated": False,
+        "context":           None,
+        "explanation":       None,
+        "questions_cache":   None,
+        "validation_score":  None,
+    })
 
-    db.commit()
-    db.refresh(checkpoint)
-
-    print(f"✅ Checkpoint {checkpoint_id} updated by user {current_user["id"]}")
+    db.collection(CHECKPOINTS).document(checkpoint_id).update(updates)
+    updated = {**cp, **updates}
+    print(f"✅ Checkpoint {checkpoint_id} updated by user {uid}")
 
     return {
-        "message": "Checkpoint updated successfully.",
-        "checkpoint_id": checkpoint_id,
-        "topic": checkpoint.topic,
-        "objectives": checkpoint.objectives,
-        "key_concepts": checkpoint.key_concepts,
+        "message":            "Checkpoint updated successfully.",
+        "checkpoint_id":      checkpoint_id,
+        "topic":              updated.get("topic"),
+        "objectives":         updated.get("objectives"),
+        "key_concepts":       updated.get("key_concepts"),
         "content_invalidated": True,
     }

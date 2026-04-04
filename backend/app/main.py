@@ -2,17 +2,13 @@ import os
 import uvicorn
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from sqlalchemy import text
 
-from app.database import init_db, engine
+from app.database import init_db
 from app.routes import auth, sessions, checkpoints, analytics, gamification
 
 app = FastAPI(title="Conceptly API", version="1.0.0")
 
-_raw_origins = os.getenv(
-    "FRONTEND_URL",
-    "http://localhost:5173"
-)
+_raw_origins = os.getenv("FRONTEND_URL", "http://localhost:5173")
 ALLOWED_ORIGINS = [o.strip() for o in _raw_origins.split(",") if o.strip()]
 
 app.add_middleware(
@@ -33,16 +29,17 @@ app.include_router(gamification.router)
 @app.on_event("startup")
 async def on_startup():
     print("Starting Conceptly API")
-    try:
-        init_db()
-        print("Database initialized")
-    except Exception as e:
-        print(f"Database initialization failed: {e}")
+    init_db()
     print("Startup complete!")
+
 
 @app.get("/")
 def read_root():
-    return {"message": "Conceptly API is running!", "status": "healthy", "version": "1.0.0"}
+    return {
+        "message": "Conceptly API is running!",
+        "status": "healthy",
+        "version": "1.0.0",
+    }
 
 
 @app.get("/health")
@@ -53,9 +50,9 @@ def health_check():
 @app.get("/db-status")
 def database_status():
     try:
-        with engine.connect() as conn:
-            conn.execute(text("SELECT 1"))
-        return {"database": "connected", "status": "ok"}
+        from app.firebase import db
+        _ = list(db.collections())
+        return {"database": "firestore connected", "status": "ok"}
     except Exception as e:
         return {"database": "error", "error": str(e), "status": "failed"}
 

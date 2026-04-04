@@ -1,19 +1,19 @@
-from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy.orm import Session
-from pydantic import BaseModel
+from datetime import datetime
 from typing import Optional
 
-from app.database import get_db
-from app.models import User, UserAnalytics
+from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel
+
 from app.dependencies import get_current_user
+from app.firebase import db
+from app.models import USERS, USER_ANALYTICS, default_user, default_analytics
 
 router = APIRouter(prefix="/auth", tags=["auth"])
-
 
 class RegisterBody(BaseModel):
     email: str
     name: str
-    password: str          
+    password: str  
 
 
 class UpdateMeBody(BaseModel):
@@ -21,100 +21,90 @@ class UpdateMeBody(BaseModel):
     name: Optional[str] = None
 
 
-
-def _get_or_create(firebase_user: dict, db: Session) -> User:
-    uid   = firebase_user["uid"]
+def _get_or_create(firebase_user: dict) -> dict:
+    """
+    Fetch or create a Firestore user document.
+    Uses firebase_uid (== doc id) as the primary key.
+    Returns the user dict with 'id' set to the document id.
+    """
+    uid = firebase_user["uid"]
     email = firebase_user.get("email", "")
-    name  = firebase_user.get("name") or firebase_user.get("display_name") or ""
+    name = (
+        firebase_user.get("name")
+        or firebase_user.get("display_name")
+        or ""
+    )
 
-    user = db.query(User).filter(User.firebase_uid == uid).first()
-    if not user:
-        user = User(
-            firebase_uid=uid,
-            email=email,
-            name=name or "Learner",
-            tutor_mode="supportive_buddy",
-            xp=0,
-            level=1,
-        )
-        db.add(user)
-        db.flush()
-        db.add(UserAnalytics(user_id=user.id))
-        db.commit()
-        db.refresh(user)
+    user_ref = db.collection(USERS).document(uid)
+    doc = user_ref.get()
 
-    return user
+    if not doc.exists:
+        data = default_user(uid, email, name)
+        user_ref.set(data)
 
+        db.collection(USER_ANALYTICS).document(uid).set(default_analytics(uid))
+
+        data["id"] = uid
+        return data
+
+    data = doc.to_dict()
+    data["id"] = uid
+    return data
+
+
+def _user_response(user: dict) -> dict:
+    return {
+        "id":         user["id"],
+        "email":      user.get("email", ""),
+        "name":       user.get("name", ""),
+        "tutor_mode": user.get("tutor_mode", "supportive_buddy"),
+        "xp":         user.get("xp", 0),
+        "level":      user.get("level", 1),
+        "created_at": user.get("created_at"),
+    }
 
 
 @router.post("/register", status_code=200)
 def register(
     body: RegisterBody,
     firebase_user=Depends(get_current_user),
-    db: Session = Depends(get_db),
 ):
-    user = _get_or_create(firebase_user, db)
+    user = _get_or_create(firebase_user)
     if body.name and body.name != "Learner":
-        user.name = body.name
-        db.commit()
-        db.refresh(user)
-
+        db.collection(USERS).document(user["id"]).update({"name": body.name})
+        user["name"] = body.name
     return _user_response(user)
 
 
 @router.get("/me")
-def me(
-    firebase_user=Depends(get_current_user),
-    db: Session = Depends(get_db),
-):
-    """
-    Load the current user's profile. Auto-creates the record on first login
-    so Google-only users (who skip /register) still work.
-    """
-    user = _get_or_create(firebase_user, db)
+def me(firebase_user=Depends(get_current_user)):
+    """Auto-creates the Firestore record on first login (Google Sign-In)."""
+    user = _get_or_create(firebase_user)
     return _user_response(user)
 
 
 @router.patch("/me")
-def update_me(
-    body: UpdateMeBody,
-    firebase_user=Depends(get_current_user),
-    db: Session = Depends(get_db),
-):
-    user = _get_or_create(firebase_user, db)
+def update_me(body: UpdateMeBody, firebase_user=Depends(get_current_user)):
+    user = _get_or_create(firebase_user)
+    updates = {}
     if body.tutor_mode is not None:
-        user.tutor_mode = body.tutor_mode
+        updates["tutor_mode"] = body.tutor_mode
     if body.name is not None:
-        user.name = body.name
-    db.commit()
-    db.refresh(user)
+        updates["name"] = body.name
+    if updates:
+        db.collection(USERS).document(user["id"]).update(updates)
+        user.update(updates)
     return _user_response(user)
 
 
 @router.post("/sync-user")
-def sync_user(
-    firebase_user=Depends(get_current_user),
-    db: Session = Depends(get_db),
-):
+def sync_user(firebase_user=Depends(get_current_user)):
     """Backward-compat alias used by some older client code."""
-    user = _get_or_create(firebase_user, db)
+    user = _get_or_create(firebase_user)
     return {
-        "message": "User synced successfully",
-        "user_id": user.id,
-        "email": user.email,
-        "level": user.level,
-        "xp": user.xp,
-    }
-
-
-
-def _user_response(user: User) -> dict:
-    return {
-        "id":          user.id,
-        "email":       user.email,
-        "name":        user.name,
-        "tutor_mode":  user.tutor_mode,
-        "xp":          user.xp,
-        "level":       user.level,
-        "created_at":  user.created_at.isoformat() if user.created_at else None,
+        "message":  "User synced successfully",
+        "user_id":  user["id"],
+        "email":    user.get("email", ""),
+        "level":    user.get("level", 1),
+        "xp":       user.get("xp", 0),
     }

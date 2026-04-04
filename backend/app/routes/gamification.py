@@ -1,232 +1,31 @@
-"""
-gamification.py  –  all routes the frontend calls under /gamification/
-
-Frontend calls (from api.js):
-  GET  /gamification/stats              ← getUserStats()
-  GET  /gamification/badges             ← getBadges()
-  GET  /gamification/weak-topics        ← getWeakTopics()
-  GET  /gamification/daily-challenge    ← getDailyChallenge()
-  POST /gamification/daily-challenge/{id}/complete
-  GET  /gamification/leaderboard        ← getLeaderboard()
-  GET  /gamification/profile            ← (kept from original)
-  PATCH /gamification/tutor-mode        ← updateTutorMode()
-  POST /gamification/notes
-  GET  /gamification/notes/{session_id}
-  POST /gamification/notes/{session_id}/generate
-  GET  /gamification/badge-definitions
-  POST /gamification/badges/check
-"""
-
 from datetime import datetime, date, timedelta
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
-from sqlalchemy.orm import Session
 
-from app.database import get_db
 from app.dependencies import get_current_user
+from app.firebase import db
 from app.models import (
-    User, UserAnalytics, UserBadge, WeakTopic,
-    DailyChallenge, UserNote, LearningSession,
+    USERS, USER_ANALYTICS, USER_BADGES, WEAK_TOPICS,
+    DAILY_CHALLENGES, USER_NOTES, SESSIONS,
+    default_badge, default_note, default_challenge,
 )
 
 router = APIRouter(prefix="/gamification", tags=["gamification"])
 
 
-# ── helpers ──────────────────────────────────────────────────────────────────
-
-def _get_user(firebase_user: dict, db: Session) -> User:
-    user = db.query(User).filter(User.firebase_uid == firebase_user["uid"]).first()
-    if not user:
-        raise HTTPException(status_code=404, detail="User not found")
-    return user
-
-
 BADGE_DEFINITIONS = [
-    {"id": "first_session",   "name": "First Steps",     "type": "milestone", "description": "Complete your first learning session"},
-    {"id": "streak_3",        "name": "On a Roll",        "type": "streak",    "description": "Maintain a 3-day learning streak"},
-    {"id": "streak_7",        "name": "Week Warrior",     "type": "streak",    "description": "Maintain a 7-day learning streak"},
-    {"id": "streak_30",       "name": "Monthly Master",   "type": "streak",    "description": "Maintain a 30-day learning streak"},
-    {"id": "sessions_5",      "name": "Getting Started",  "type": "progress",  "description": "Complete 5 learning sessions"},
-    {"id": "sessions_25",     "name": "Dedicated Learner","type": "progress",  "description": "Complete 25 learning sessions"},
-    {"id": "perfect_quiz",    "name": "Perfectionist",    "type": "quiz",      "description": "Score 100% on a quiz"},
-    {"id": "level_5",         "name": "Rising Star",      "type": "level",     "description": "Reach level 5"},
-    {"id": "level_10",        "name": "Knowledge Seeker", "type": "level",     "description": "Reach level 10"},
+    {"id": "first_session",   "name": "First Steps",      "type": "milestone", "description": "Complete your first learning session"},
+    {"id": "streak_3",        "name": "On a Roll",         "type": "streak",    "description": "Maintain a 3-day learning streak"},
+    {"id": "streak_7",        "name": "Week Warrior",      "type": "streak",    "description": "Maintain a 7-day learning streak"},
+    {"id": "streak_30",       "name": "Monthly Master",    "type": "streak",    "description": "Maintain a 30-day learning streak"},
+    {"id": "sessions_5",      "name": "Getting Started",   "type": "progress",  "description": "Complete 5 learning sessions"},
+    {"id": "sessions_25",     "name": "Dedicated Learner", "type": "progress",  "description": "Complete 25 learning sessions"},
+    {"id": "perfect_quiz",    "name": "Perfectionist",     "type": "quiz",      "description": "Score 100% on a quiz"},
+    {"id": "level_5",         "name": "Rising Star",       "type": "level",     "description": "Reach level 5"},
+    {"id": "level_10",        "name": "Knowledge Seeker",  "type": "level",     "description": "Reach level 10"},
 ]
-
-
-# ── /stats  (frontend: getUserStats) ─────────────────────────────────────────
-
-@router.get("/stats")
-def get_stats(
-    firebase_user=Depends(get_current_user),
-    db: Session = Depends(get_db),
-):
-    user = _get_user(firebase_user, db)
-    analytics = db.query(UserAnalytics).filter(UserAnalytics.user_id == user.id).first()
-    badges = db.query(UserBadge).filter(UserBadge.user_id == user.id).all()
-
-    return {
-        "xp":              user.xp,
-        "level":           user.level,
-        "tutor_mode":      user.tutor_mode,
-        "total_sessions":  analytics.total_sessions if analytics else 0,
-        "completed_sessions": analytics.completed_sessions if analytics else 0,
-        "current_streak":  analytics.current_streak if analytics else 0,
-        "longest_streak":  analytics.longest_streak if analytics else 0,
-        "avg_score":       analytics.avg_score if analytics else 0.0,
-        "badge_count":     len(badges),
-    }
-
-
-# ── /profile  (kept from original) ────────────────────────────────────────
-
-@router.get("/profile")
-def get_profile(
-    firebase_user=Depends(get_current_user),
-    db: Session = Depends(get_db),
-):
-    return get_stats(firebase_user=firebase_user, db=db)
-
-
-# ── /leaderboard  (frontend: getLeaderboard) ──────────────────────────────
-
-@router.get("/leaderboard")
-def get_leaderboard(
-    firebase_user=Depends(get_current_user),
-    db: Session = Depends(get_db),
-):
-    top_users = (
-        db.query(User)
-        .order_by(User.xp.desc())
-        .limit(20)
-        .all()
-    )
-    current_uid = firebase_user["uid"]
-    return [
-        {
-            "rank":    i + 1,
-            "name":    u.name,
-            "xp":      u.xp,
-            "level":   u.level,
-            "is_me":   u.firebase_uid == current_uid,
-        }
-        for i, u in enumerate(top_users)
-    ]
-
-
-# ── /tutor-mode ────────────────────────────────────────────────────────────
-
-class TutorModeBody(BaseModel):
-    tutor_mode: str
-
-
-@router.patch("/tutor-mode")
-def update_tutor_mode(
-    body: TutorModeBody,
-    firebase_user=Depends(get_current_user),
-    db: Session = Depends(get_db),
-):
-    user = _get_user(firebase_user, db)
-    user.tutor_mode = body.tutor_mode
-    db.commit()
-    return {"tutor_mode": user.tutor_mode}
-
-
-# ── /badges ────────────────────────────────────────────────────────────────
-
-@router.get("/badges")
-def get_badges(
-    firebase_user=Depends(get_current_user),
-    db: Session = Depends(get_db),
-):
-    user = _get_user(firebase_user, db)
-    badges = db.query(UserBadge).filter(UserBadge.user_id == user.id).all()
-    return [
-        {
-            "id":          b.id,
-            "badge_name":  b.badge_name,
-            "badge_type":  b.badge_type,
-            "description": b.description,
-            "earned_at":   b.earned_at.isoformat() if b.earned_at else None,
-        }
-        for b in badges
-    ]
-
-
-@router.get("/badge-definitions")
-def get_badge_definitions():
-    return BADGE_DEFINITIONS
-
-
-@router.post("/badges/check")
-def check_and_award_badges(
-    firebase_user=Depends(get_current_user),
-    db: Session = Depends(get_db),
-):
-    """Evaluate and award any newly-earned badges."""
-    user = _get_user(firebase_user, db)
-    analytics = db.query(UserAnalytics).filter(UserAnalytics.user_id == user.id).first()
-    existing = {b.badge_name for b in db.query(UserBadge).filter(UserBadge.user_id == user.id).all()}
-    awarded = []
-
-    def _award(badge_id: str):
-        defn = next((b for b in BADGE_DEFINITIONS if b["id"] == badge_id), None)
-        if defn and defn["name"] not in existing:
-            db.add(UserBadge(
-                user_id=user.id,
-                badge_name=defn["name"],
-                badge_type=defn["type"],
-                description=defn["description"],
-            ))
-            awarded.append(defn["name"])
-            existing.add(defn["name"])
-
-    if analytics:
-        if analytics.completed_sessions >= 1:  _award("first_session")
-        if analytics.completed_sessions >= 5:  _award("sessions_5")
-        if analytics.completed_sessions >= 25: _award("sessions_25")
-        if analytics.current_streak >= 3:      _award("streak_3")
-        if analytics.current_streak >= 7:      _award("streak_7")
-        if analytics.current_streak >= 30:     _award("streak_30")
-    if user.level >= 5:  _award("level_5")
-    if user.level >= 10: _award("level_10")
-
-    if awarded:
-        db.commit()
-
-    return {"awarded": awarded}
-
-
-# ── /weak-topics ────────────────────────────────────────────────────────────
-
-@router.get("/weak-topics")
-def get_weak_topics(
-    firebase_user=Depends(get_current_user),
-    db: Session = Depends(get_db),
-):
-    user = _get_user(firebase_user, db)
-    topics = (
-        db.query(WeakTopic)
-        .filter(WeakTopic.user_id == user.id)
-        .order_by(WeakTopic.strength_score.asc())
-        .limit(10)
-        .all()
-    )
-    return [
-        {
-            "id":              t.id,
-            "topic":           t.topic,
-            "concept":         t.concept,
-            "strength_score":  t.strength_score,
-            "last_practiced":  t.last_practiced.isoformat() if t.last_practiced else None,
-        }
-        for t in topics
-    ]
-
-
-# ── /daily-challenge ────────────────────────────────────────────────────────
 
 CHALLENGE_POOL = [
     "Complete one full checkpoint today",
@@ -237,118 +36,265 @@ CHALLENGE_POOL = [
 ]
 
 
-@router.get("/daily-challenge")
-def get_daily_challenge(
-    firebase_user=Depends(get_current_user),
-    db: Session = Depends(get_db),
-):
-    user = _get_user(firebase_user, db)
-    today_start = datetime.combine(date.today(), datetime.min.time())
+def _get_user_doc(uid: str) -> dict:
+    doc = db.collection(USERS).document(uid).get()
+    if not doc.exists:
+        raise HTTPException(status_code=404, detail="User not found")
+    data = doc.to_dict()
+    data["id"] = uid
+    return data
 
-    challenge = (
-        db.query(DailyChallenge)
-        .filter(DailyChallenge.user_id == user.id, DailyChallenge.date >= today_start)
-        .first()
+
+def _get_analytics(uid: str) -> dict:
+    doc = db.collection(USER_ANALYTICS).document(uid).get()
+    if doc.exists:
+        return doc.to_dict()
+    from app.models import default_analytics
+    data = default_analytics(uid)
+    db.collection(USER_ANALYTICS).document(uid).set(data)
+    return data
+
+
+@router.get("/stats")
+def get_stats(current_user=Depends(get_current_user)):
+    uid = current_user["uid"]
+    user = _get_user_doc(uid)
+    a = _get_analytics(uid)
+    badges = list(db.collection(USER_BADGES).where("user_id", "==", uid).stream())
+    return {
+        "xp":               user.get("xp", 0),
+        "level":            user.get("level", 1),
+        "tutor_mode":       user.get("tutor_mode", "supportive_buddy"),
+        "total_sessions":   a.get("total_sessions", 0),
+        "completed_sessions": a.get("completed_sessions", 0),
+        "current_streak":   a.get("current_streak", 0),
+        "longest_streak":   a.get("longest_streak", 0),
+        "avg_score":        a.get("avg_score", 0.0),
+        "badge_count":      len(badges),
+    }
+
+
+@router.get("/profile")
+def get_profile(current_user=Depends(get_current_user)):
+    return get_stats(current_user=current_user)
+
+
+
+@router.get("/leaderboard")
+def get_leaderboard(current_user=Depends(get_current_user)):
+    uid = current_user["uid"]
+    docs = (
+        db.collection(USERS)
+        .order_by("xp", direction="DESCENDING")
+        .limit(20)
+        .stream()
+    )
+    return [
+        {
+            "rank":  i + 1,
+            "name":  d.to_dict().get("name", ""),
+            "xp":    d.to_dict().get("xp", 0),
+            "level": d.to_dict().get("level", 1),
+            "is_me": d.id == uid,
+        }
+        for i, d in enumerate(docs)
+    ]
+
+
+
+class TutorModeBody(BaseModel):
+    tutor_mode: str
+
+
+@router.patch("/tutor-mode")
+def update_tutor_mode(body: TutorModeBody, current_user=Depends(get_current_user)):
+    uid = current_user["uid"]
+    _get_user_doc(uid)  
+    db.collection(USERS).document(uid).update({"tutor_mode": body.tutor_mode})
+    return {"tutor_mode": body.tutor_mode}
+
+
+
+@router.get("/badges")
+def get_badges(current_user=Depends(get_current_user)):
+    uid = current_user["uid"]
+    docs = list(db.collection(USER_BADGES).where("user_id", "==", uid).stream())
+    return [
+        {
+            "id":          d.id,
+            "badge_name":  d.to_dict().get("badge_name", ""),
+            "badge_type":  d.to_dict().get("badge_type", ""),
+            "description": d.to_dict().get("description", ""),
+            "earned_at":   d.to_dict().get("earned_at"),
+        }
+        for d in docs
+    ]
+
+
+@router.get("/badge-definitions")
+def get_badge_definitions():
+    return BADGE_DEFINITIONS
+
+
+@router.post("/badges/check")
+def check_and_award_badges(current_user=Depends(get_current_user)):
+    uid = current_user["uid"]
+    user = _get_user_doc(uid)
+    a = _get_analytics(uid)
+
+    existing_badges = {
+        d.to_dict().get("badge_name")
+        for d in db.collection(USER_BADGES).where("user_id", "==", uid).stream()
+    }
+    awarded = []
+
+    def _award(badge_id: str):
+        defn = next((b for b in BADGE_DEFINITIONS if b["id"] == badge_id), None)
+        if defn and defn["name"] not in existing_badges:
+            db.collection(USER_BADGES).add(
+                default_badge(uid, defn["name"], defn["type"], defn["description"])
+            )
+            awarded.append(defn["name"])
+            existing_badges.add(defn["name"])
+
+    completed = a.get("completed_sessions", 0)
+    streak = a.get("current_streak", 0)
+    level = user.get("level", 1)
+
+    if completed >= 1:  _award("first_session")
+    if completed >= 5:  _award("sessions_5")
+    if completed >= 25: _award("sessions_25")
+    if streak >= 3:     _award("streak_3")
+    if streak >= 7:     _award("streak_7")
+    if streak >= 30:    _award("streak_30")
+    if level >= 5:      _award("level_5")
+    if level >= 10:     _award("level_10")
+
+    return {"awarded": awarded}
+
+
+
+@router.get("/weak-topics")
+def get_weak_topics(current_user=Depends(get_current_user)):
+    uid = current_user["uid"]
+    docs = (
+        db.collection(WEAK_TOPICS)
+        .where("user_id", "==", uid)
+        .order_by("strength_score")
+        .limit(10)
+        .stream()
+    )
+    return [
+        {
+            "id":             d.id,
+            "topic":          d.to_dict().get("topic", ""),
+            "concept":        d.to_dict().get("concept", ""),
+            "strength_score": d.to_dict().get("strength_score", 0.5),
+            "last_practiced": d.to_dict().get("last_practiced"),
+        }
+        for d in docs
+    ]
+
+
+
+@router.get("/daily-challenge")
+def get_daily_challenge(current_user=Depends(get_current_user)):
+    uid = current_user["uid"]
+    today_str = date.today().isoformat()
+
+    existing = list(
+        db.collection(DAILY_CHALLENGES)
+        .where("user_id", "==", uid)
+        .where("date_key", "==", today_str)
+        .limit(1)
+        .stream()
     )
 
-    if not challenge:
-        # deterministically pick a challenge based on day-of-year so it's consistent
-        idx = date.today().timetuple().tm_yday % len(CHALLENGE_POOL)
-        challenge = DailyChallenge(
-            user_id=user.id,
-            task=CHALLENGE_POOL[idx],
-            bonus_xp=50,
-            completed=False,
-            date=datetime.utcnow(),
-        )
-        db.add(challenge)
-        db.commit()
-        db.refresh(challenge)
+    if existing:
+        doc = existing[0]
+        data = doc.to_dict()
+        data["id"] = doc.id
+        return {
+            "id":        data["id"],
+            "task":      data.get("task", ""),
+            "bonus_xp":  data.get("bonus_xp", 50),
+            "completed": data.get("completed", False),
+            "date":      data.get("date"),
+        }
 
+    idx = date.today().timetuple().tm_yday % len(CHALLENGE_POOL)
+    data = default_challenge(uid, CHALLENGE_POOL[idx])
+    data["date_key"] = today_str  # for easy daily lookup
+    _, ref = db.collection(DAILY_CHALLENGES).add(data)
     return {
-        "id":        challenge.id,
-        "task":      challenge.task,
-        "bonus_xp":  challenge.bonus_xp,
-        "completed": challenge.completed,
-        "date":      challenge.date.isoformat() if challenge.date else None,
+        "id":        ref.id,
+        "task":      data["task"],
+        "bonus_xp":  data["bonus_xp"],
+        "completed": False,
+        "date":      data["date"],
     }
 
 
 @router.post("/daily-challenge/{challenge_id}/complete")
 def complete_daily_challenge(
-    challenge_id: int,
-    firebase_user=Depends(get_current_user),
-    db: Session = Depends(get_db),
+    challenge_id: str,
+    current_user=Depends(get_current_user),
 ):
-    user = _get_user(firebase_user, db)
-    challenge = db.query(DailyChallenge).filter(
-        DailyChallenge.id == challenge_id,
-        DailyChallenge.user_id == user.id,
-    ).first()
-    if not challenge:
+    uid = current_user["uid"]
+    doc = db.collection(DAILY_CHALLENGES).document(challenge_id).get()
+    if not doc.exists or doc.to_dict().get("user_id") != uid:
         raise HTTPException(status_code=404, detail="Challenge not found")
-    if not challenge.completed:
-        challenge.completed = True
-        user.xp += challenge.bonus_xp
-        db.commit()
-    return {"completed": True, "bonus_xp": challenge.bonus_xp}
 
+    data = doc.to_dict()
+    if not data.get("completed"):
+        bonus_xp = data.get("bonus_xp", 50)
+        db.collection(DAILY_CHALLENGES).document(challenge_id).update({"completed": True})
 
-# ── /notes ──────────────────────────────────────────────────────────────────
+        user_ref = db.collection(USERS).document(uid)
+        user_data = user_ref.get().to_dict()
+        user_ref.update({"xp": user_data.get("xp", 0) + bonus_xp})
+
+    return {"completed": True, "bonus_xp": data.get("bonus_xp", 50)}
+
 
 class NoteBody(BaseModel):
-    session_id: int
+    session_id: str
     content: str
 
 
 @router.post("/notes")
-def create_note(
-    body: NoteBody,
-    firebase_user=Depends(get_current_user),
-    db: Session = Depends(get_db),
-):
-    user = _get_user(firebase_user, db)
-    note = UserNote(user_id=user.id, session_id=body.session_id, content=body.content)
-    db.add(note)
-    db.commit()
-    db.refresh(note)
-    return {"id": note.id, "content": note.content, "created_at": note.created_at.isoformat()}
+def create_note(body: NoteBody, current_user=Depends(get_current_user)):
+    uid = current_user["uid"]
+    data = default_note(uid, body.session_id, body.content)
+    _, ref = db.collection(USER_NOTES).add(data)
+    return {"id": ref.id, "content": data["content"], "created_at": data["created_at"]}
 
 
 @router.get("/notes/{session_id}")
-def get_notes(
-    session_id: int,
-    firebase_user=Depends(get_current_user),
-    db: Session = Depends(get_db),
-):
-    user = _get_user(firebase_user, db)
-    notes = (
-        db.query(UserNote)
-        .filter(UserNote.user_id == user.id, UserNote.session_id == session_id)
-        .order_by(UserNote.created_at.desc())
-        .all()
+def get_notes(session_id: str, current_user=Depends(get_current_user)):
+    uid = current_user["uid"]
+    docs = (
+        db.collection(USER_NOTES)
+        .where("user_id", "==", uid)
+        .where("session_id", "==", session_id)
+        .order_by("created_at", direction="DESCENDING")
+        .stream()
     )
-    return [{"id": n.id, "content": n.content, "created_at": n.created_at.isoformat()} for n in notes]
+    return [
+        {"id": d.id, "content": d.to_dict().get("content", ""), "created_at": d.to_dict().get("created_at")}
+        for d in docs
+    ]
 
 
 @router.post("/notes/{session_id}/generate")
-def generate_smart_notes(
-    session_id: int,
-    firebase_user=Depends(get_current_user),
-    db: Session = Depends(get_db),
-):
-    """Stub – real implementation calls LLM to summarise the session."""
-    user = _get_user(firebase_user, db)
-    session = db.query(LearningSession).filter(
-        LearningSession.id == session_id,
-        LearningSession.user_id == user.id,
-    ).first()
-    if not session:
+def generate_smart_notes(session_id: str, current_user=Depends(get_current_user)):
+    uid = current_user["uid"]
+    session_doc = db.collection(SESSIONS).document(session_id).get()
+    if not session_doc.exists or session_doc.to_dict().get("user_id") != uid:
         raise HTTPException(status_code=404, detail="Session not found")
 
-    summary = f"Smart notes for '{session.topic}' – generated summary placeholder."
-    note = UserNote(user_id=user.id, session_id=session_id, content=summary)
-    db.add(note)
-    db.commit()
-    db.refresh(note)
-    return {"id": note.id, "content": note.content, "created_at": note.created_at.isoformat()}
+    topic = session_doc.to_dict().get("topic", "")
+    summary = f"Smart notes for '{topic}' – generated summary placeholder."
+    data = default_note(uid, session_id, summary)
+    _, ref = db.collection(USER_NOTES).add(data)
+    return {"id": ref.id, "content": data["content"], "created_at": data["created_at"]}
