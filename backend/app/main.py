@@ -1,26 +1,28 @@
-from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
-from app.database import init_db, engine
-from app.routes import auth, sessions, checkpoints, analytics, gamification
-from sqlalchemy import text
 import os
 import uvicorn
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+from sqlalchemy import text
+
+from app.database import init_db, engine
+from app.routes import auth, sessions, checkpoints, analytics, gamification
 
 app = FastAPI(title="Conceptly API", version="1.0.0")
 
-# CORS
+_raw_origins = os.getenv(
+    "FRONTEND_URL",
+    "http://localhost:5173", "http://localhost:3000"
+)
+ALLOWED_ORIGINS = [o.strip() for o in _raw_origins.split(",") if o.strip()]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:5173",
-        "http://localhost:3000"
-    ],
+    allow_origins=ALLOWED_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# Routers
 app.include_router(auth.router)
 app.include_router(sessions.router)
 app.include_router(checkpoints.router)
@@ -31,25 +33,20 @@ app.include_router(gamification.router)
 @app.on_event("startup")
 async def on_startup():
     print("Starting Conceptly API")
-    print(f"Running on Render: {bool(os.getenv('RENDER'))}")
-    print(f"DB configured: {bool(os.getenv('DATABASE_URL'))}")
-
+    print(f"Running on Render : {bool(os.getenv('RENDER'))}")
+    print(f"DB configured     : {bool(os.getenv('DATABASE_URL'))}")
+    print(f"Allowed origins   : {ALLOWED_ORIGINS}")
     try:
         init_db()
-        print("Database initialized")
+        print("Database initialised")
     except Exception as e:
-        print(f"Database initialization failed: {e}")
-
+        print(f"Database init failed: {e}")
     print("Startup complete!")
 
 
 @app.get("/")
 def read_root():
-    return {
-        "message": "Conceptly API is running!",
-        "status": "healthy",
-        "version": "1.0.0"
-    }
+    return {"message": "Conceptly API is running!", "status": "healthy", "version": "1.0.0"}
 
 
 @app.get("/health")
@@ -62,17 +59,11 @@ def database_status():
     try:
         with engine.connect() as conn:
             conn.execute(text("SELECT 1"))
-            return {
-                "database": "connected",
-                "status": "done"
-            }
+        return {"database": "connected", "status": "ok"}
     except Exception as e:
-        return {
-            "database": "error",
-            "error": str(e),
-            "status": "failed"
-        }
+        return {"database": "error", "error": str(e), "status": "failed"}
+
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8000))
-    uvicorn.run("app.main:app", host="0.0.0.0", port=port)
+    uvicorn.run("app.main:app", host="0.0.0.0", port=port, reload=False)

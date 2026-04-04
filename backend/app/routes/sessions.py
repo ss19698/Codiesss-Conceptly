@@ -118,14 +118,13 @@ def generate_checkpoints_route(
 
     question_generator.clear_question_history(session_id)
 
-    # UPDATED: pass session_id so checkpoint_generator can use RAG
     checkpoints = checkpoint_generator.generate_checkpoints(
         topic=session.topic,
         current_level="beginner",
         target_level="intermediate",
         purpose="general learning",
         tutor_mode=current_user.tutor_mode,
-        session_id=session_id,              # NEW
+        session_id=session_id,             
     )
 
     print(f"✓ Generated {len(checkpoints)} checkpoint definitions")
@@ -209,11 +208,10 @@ def get_checkpoint_content(
         "level": checkpoint.level,
     }
 
-    # UPDATED: pass session_id for RAG
     result = run_checkpoint_workflow(
         checkpoint=checkpoint_data,
         tutor_mode=current_user.tutor_mode,
-        session_id=session_id,              # NEW
+        session_id=session_id,             
     )
 
     checkpoint.context = result['context']
@@ -267,11 +265,10 @@ def get_checkpoint_questions(
     }
 
     if not checkpoint.content_generated:
-        # UPDATED: pass session_id
         result = run_checkpoint_workflow(
             checkpoint=checkpoint_data,
             tutor_mode=current_user.tutor_mode,
-            session_id=session_id,          # NEW
+            session_id=session_id,        
         )
 
         checkpoint.context = result['context']
@@ -286,13 +283,12 @@ def get_checkpoint_questions(
         print(f"✓ Full content generated for checkpoint {checkpoint_id}")
         return {"questions": result['questions']}
 
-    # UPDATED: pass session_id
     questions = question_generator.generate_questions(
         checkpoint=checkpoint_data,
         context=checkpoint.context,
         level=checkpoint.level,
         tutor_mode=current_user.tutor_mode,
-        session_id=session_id,              # NEW
+        session_id=session_id,            
     )
 
     checkpoint.questions_cache = questions
@@ -428,7 +424,6 @@ def complete_session(
 
     question_generator.clear_question_history(session_id)
 
-    # NEW: release RAG embeddings to free memory
     try:
         from app.services.rag_service import clear_session_embeddings
         clear_session_embeddings(session_id)
@@ -568,7 +563,6 @@ async def upload_session_notes(
                     extracted_text = "\n\n".join(pages_text)
                 print(f"✅ Extracted {len(extracted_text)} chars from PDF")
             except ImportError:
-                # Fallback: try plain UTF-8 decode (works for text PDFs sometimes)
                 try:
                     extracted_text = raw_bytes.decode("utf-8", errors="ignore")
                 except Exception:
@@ -604,7 +598,7 @@ async def upload_session_notes(
     note_record = UserNote(
         user_id=current_user.id,
         session_id=session.id,
-        content=extracted_text[:10000],  # cap stored copy
+        content=extracted_text[:10000],  
     )
     db.add(note_record)
     db.commit()
@@ -613,7 +607,6 @@ async def upload_session_notes(
     rag_error = None
     try:
         from app.services.rag_service import store_embeddings
-        # Force re-build (clear old cache first)
         from app.services.rag_service import clear_session_embeddings
         clear_session_embeddings(session_id)
         rag_active = store_embeddings(session_id, session.user_notes)
@@ -655,7 +648,6 @@ def update_checkpoint(
       with the updated checkpoint on next access.
     - Completed checkpoints cannot be edited (status == 'completed').
     """
-    # Verify session ownership
     session = db.query(LearningSession).filter(
         LearningSession.id == session_id,
         LearningSession.user_id == current_user.id,
@@ -676,7 +668,6 @@ def update_checkpoint(
             detail="Cannot edit a completed checkpoint.",
         )
 
-    # Apply updates (only fields that were explicitly supplied)
     changed = False
     if update.topic is not None and update.topic.strip():
         checkpoint.topic = update.topic.strip()
@@ -694,7 +685,6 @@ def update_checkpoint(
             "checkpoint_id": checkpoint_id,
         }
 
-    # Invalidate cached content so workflow re-runs with updated checkpoint
     checkpoint.content_generated = False
     checkpoint.context = None
     checkpoint.explanation = None

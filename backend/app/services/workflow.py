@@ -67,7 +67,6 @@ def explain_node(state: LearningState) -> LearningState:
     print(f"Creating explanation for checkpoint...")
     print(f"Using tutor mode: {state['tutor_mode']}")
 
-    # UPDATED: pass session_id for RAG support
     explanation = explainer.explain_checkpoint(
         state['checkpoint'],
         state['context'],

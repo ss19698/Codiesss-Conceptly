@@ -47,7 +47,6 @@ def store_embeddings(session_id: int, notes: str) -> bool:
     if not _RAG_AVAILABLE or not notes or not notes.strip():
         return False
 
-    # Skip if already cached
     if session_id in _vectorstore_cache:
         return True
 

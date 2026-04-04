@@ -83,7 +83,6 @@ def submit_quiz(checkpoint_id: int, quiz_answer: QuizAnswer, current_user: User 
     
     db.commit()
     
-    # Update streak on quiz activity
     from app.models import UserAnalytics as UA
     from datetime import timedelta
     _analytics = db.query(UA).filter(UA.user_id == current_user.id).first()
